@@ -2049,7 +2049,7 @@ export default function App() {
       <header className="h-12 bg-panel border-b border-border flex items-center justify-between px-4 z-20 shrink-0">
         <div className="flex items-center gap-3">
           <Layers className="w-4 h-4 text-accent" />
-          <div className="font-bold text-sm tracking-widest text-accent uppercase">SVG.LAB v1.0.4</div>
+          <div className="font-bold text-sm tracking-widest text-accent uppercase">Bezier Animator</div>
           <div className="w-[1px] h-4 bg-border mx-1" />
           <div className="flex items-center gap-1">
             <button 
