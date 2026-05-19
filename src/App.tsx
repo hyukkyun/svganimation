@@ -439,7 +439,16 @@ export default function App() {
   const [keyframeTimes, setKeyframeTimes] = useState<number[]>([0]);
   
   // History for segments
-  const [history, setHistory] = useState<PathSegment[][]>([DEFAULT_PATH_SCALED]);
+  type HistoryState = {
+    keyframes: PathSegment[][][];
+    keyframeTimes: number[];
+    activeKeyIdx: number;
+  };
+  const [history, setHistory] = useState<HistoryState[]>([{
+    keyframes: [DEFAULT_PATH_SCALED],
+    keyframeTimes: [0],
+    activeKeyIdx: 0,
+  }]);
   const [historyPtr, setHistoryPtr] = useState(0);
   const [activeKeyIdx, setActiveKeyIdx] = useState(0);
   
@@ -596,9 +605,9 @@ export default function App() {
     });
   };
 
-  const pushHistory = (newSegments: PathSegment[]) => {
+  const pushHistory = (newState: HistoryState) => {
     const newHistory = history.slice(0, historyPtr + 1);
-    newHistory.push(JSON.parse(JSON.stringify(newSegments)));
+    newHistory.push(JSON.parse(JSON.stringify(newState)));
     // Limit history size to 50
     if (newHistory.length > 50) newHistory.shift();
     setHistory(newHistory);
@@ -609,7 +618,11 @@ export default function App() {
     if (historyPtr > 0) {
       const prev = history[historyPtr - 1];
       setHistoryPtr(historyPtr - 1);
-      setSegments(JSON.parse(JSON.stringify(prev)));
+      const cloned = JSON.parse(JSON.stringify(prev));
+      setKeyframes(cloned.keyframes);
+      setKeyframeTimes(cloned.keyframeTimes);
+      setActiveKeyIdx(cloned.activeKeyIdx);
+      setSegments(cloned.keyframes[cloned.activeKeyIdx]);
     }
   }, [history, historyPtr]);
 
@@ -617,16 +630,27 @@ export default function App() {
     if (historyPtr < history.length - 1) {
       const next = history[historyPtr + 1];
       setHistoryPtr(historyPtr + 1);
-      setSegments(JSON.parse(JSON.stringify(next)));
+      const cloned = JSON.parse(JSON.stringify(next));
+      setKeyframes(cloned.keyframes);
+      setKeyframeTimes(cloned.keyframeTimes);
+      setActiveKeyIdx(cloned.activeKeyIdx);
+      setSegments(cloned.keyframes[cloned.activeKeyIdx]);
     }
   }, [history, historyPtr]);
+
+  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory });
+  useEffect(() => {
+    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory };
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
+      const { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes } = bindRef.current;
+      
       // Guide deletion
-      if ((e.key === 'Delete' || e.key === 'Backspace') && activeGuide) {
+      if ((e.code === 'Delete' || e.code === 'Backspace') && activeGuide) {
         e.preventDefault();
         setGuides(prev => prev.filter(g => g.id !== activeGuide));
         setActiveGuide(null);
@@ -634,7 +658,7 @@ export default function App() {
       }
 
       // Point deletion
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnchors.length > 0) {
+      if ((e.code === 'Delete' || e.code === 'Backspace') && selectedAnchors.length > 0) {
         e.preventDefault();
         const ptsToDelete = new Set(selectedAnchors.map(a => a.sIdx));
         if (ptsToDelete.size > 0 && ptsToDelete.size < segmentsRef.current.length) {
@@ -649,7 +673,21 @@ export default function App() {
                 newSegments[0] = ['M', newSegments[0][1], newSegments[0][2]];
              }
            }
-           pushHistory(newSegments);
+           
+           // Apply topology change to ALL keyframes to keep lerping compatible
+           const newKeyframes = keyframesRef.current.map((kf, i) => {
+              if (i === activeKeyIdx) return newSegments;
+              const kfSegs = kf.filter((_, idx) => !ptsToDelete.has(idx));
+              if (kfSegs.length > 0 && kfSegs[0][0] !== 'M') {
+                kfSegs[0][0] = 'M';
+                if (kfSegs[0].length === 7) kfSegs[0] = ['M', kfSegs[0][5], kfSegs[0][6]];
+                else if (kfSegs[0].length === 3) kfSegs[0] = ['M', kfSegs[0][1], kfSegs[0][2]];
+              }
+              return kfSegs;
+           });
+           setKeyframes(newKeyframes);
+
+           pushHistory({ keyframes: newKeyframes, keyframeTimes, activeKeyIdx });
            setSegments(newSegments);
            setSelectedAnchors([]);
         }
@@ -657,38 +695,40 @@ export default function App() {
       }
 
       // Undo/Redo shortcuts
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') {
         e.preventDefault();
         redo();
       }
 
-      switch(e.key.toLowerCase()) {
-        case 'v': setTool('select'); break;
-        case 'h': setTool('hand'); break;
-        case 'z': setTool('zoom'); break;
-        case ' ': 
+      switch(e.code) {
+        case 'KeyV': setTool('select'); break;
+        case 'KeyH': setTool('hand'); break;
+        case 'KeyZ': setTool('zoom'); break;
+        case 'Space': 
           e.preventDefault();
           if (!e.repeat) setTool('hand'); 
           break;
-        case '0':
+        case 'Digit0':
+        case 'Numpad0':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             resetView();
           }
           break;
-        case 'f':
+        case 'KeyF':
           centerView();
           break;
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === ' ' && tool === 'hand') {
+      const { tool } = bindRef.current;
+      if (e.code === 'Space' && tool === 'hand') {
         setTool('select');
       }
     };
@@ -699,7 +739,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [tool, segments, activeGuide]);
+  }, []);
 
   const processUploadedSvgContent = (content: string) => {
     const parser = new DOMParser();
@@ -788,12 +828,13 @@ export default function App() {
       // Option 2: Normalize the coordinate data directly
       const fittedSegments = fitSegmentsToCanvas(parsedSegments, 300, 150, 150);
       
-      setKeyframes([fittedSegments]);
+      const clonedFitted = JSON.parse(JSON.stringify(fittedSegments));
+      setKeyframes([clonedFitted]);
       setKeyframeTimes([0]);
-      setInitialImportedPath(JSON.parse(JSON.stringify(fittedSegments)));
+      setInitialImportedPath(clonedFitted);
       setActiveKeyIdx(0);
-      setSegments(JSON.parse(JSON.stringify(fittedSegments)));
-      setHistory([JSON.parse(JSON.stringify(fittedSegments))]);
+      setSegments(clonedFitted);
+      setHistory([{ keyframes: [clonedFitted], keyframeTimes: [0], activeKeyIdx: 0 }]);
       setHistoryPtr(0);
       
       // Reset the camera back to origin
@@ -1145,14 +1186,12 @@ export default function App() {
       if (activePoint || cornerDrag) {
         // Use a more stable clone for final state
         const finalSegments = [...segmentsRef.current.map(s => [...s] as PathSegment)];
-        let didTopologyChange = false;
-
+        let pushedKeyframes = [...keyframesRef.current];
         if (cornerDrag && finalSegments.length !== cornerDrag.originalSegments.length) {
-          didTopologyChange = true;
           const isAddingCurve = finalSegments.length > cornerDrag.originalSegments.length;
           
           // Apply matching zero-radius topology to ALL OTHER keyframes to keep lerping compatible
-          const newKeyframes = keyframesRef.current.map((kf, i) => {
+          pushedKeyframes = keyframesRef.current.map((kf, i) => {
              if (i === activeKeyIdx) return finalSegments;
              let kfSegs = [...kf.map(s => [...s] as PathSegment)];
              const cornersToApplyk = findCorners(kfSegs).filter(c => 
@@ -1165,19 +1204,16 @@ export default function App() {
              });
              return kfSegs;
           });
-          setKeyframes(newKeyframes);
+          setKeyframes(pushedKeyframes);
 
           // Update selection indices since topology shifted, using our precomputed liveSelectedAnchors state
           setSelectedAnchors(liveSelectedAnchors);
-        } 
-        
-        if (!didTopologyChange) {
-          const newKeyframes = [...keyframesRef.current];
-          newKeyframes[activeKeyIdx] = finalSegments;
-          setKeyframes(newKeyframes);
+        } else {
+          pushedKeyframes[activeKeyIdx] = finalSegments;
+          setKeyframes(pushedKeyframes);
         }
 
-        pushHistory(finalSegments);
+        pushHistory({ keyframes: pushedKeyframes, keyframeTimes, activeKeyIdx });
       }
       setActivePoint(null);
       setCornerDrag(null);
@@ -1797,13 +1833,16 @@ export default function App() {
     
     setKeyframeTimes(newTimes);
     setKeyframes(newKeyframes);
-    setActiveKeyIdx(newKeyframes.length - 1);
+    const nextIdx = newKeyframes.length - 1;
+    setActiveKeyIdx(nextIdx);
+    pushHistory({ keyframes: newKeyframes, keyframeTimes: newTimes, activeKeyIdx: nextIdx });
   };
 
   const updateKeyframe = (idx: number) => {
     const newKeyframes = [...keyframes];
     newKeyframes[idx] = JSON.parse(JSON.stringify(segments));
     setKeyframes(newKeyframes);
+    pushHistory({ keyframes: newKeyframes, keyframeTimes, activeKeyIdx });
   };
 
   const removeKeyframe = (idx: number) => {
@@ -1823,13 +1862,16 @@ export default function App() {
     
     setKeyframeTimes(newTimes);
     setKeyframes(newKeyframes);
-    setActiveKeyIdx(Math.max(0, activeKeyIdx - 1));
-    setSegments(JSON.parse(JSON.stringify(newKeyframes[Math.max(0, activeKeyIdx - 1)])));
+    const nextIdx = Math.max(0, activeKeyIdx - 1);
+    setActiveKeyIdx(nextIdx);
+    setSegments(JSON.parse(JSON.stringify(newKeyframes[nextIdx])));
+    pushHistory({ keyframes: newKeyframes, keyframeTimes: newTimes, activeKeyIdx: nextIdx });
   };
 
   const selectKeyframe = (idx: number) => {
     setActiveKeyIdx(idx);
-    setSegments(JSON.parse(JSON.stringify(keyframes[idx])));
+    const cloned = JSON.parse(JSON.stringify(keyframes[idx]));
+    setSegments(cloned);
   };
 
   const [draggingTimeIdx, setDraggingTimeIdx] = useState<number | null>(null);
@@ -1859,6 +1901,8 @@ export default function App() {
     const handleTimelineMouseUp = () => {
       if (draggingTimeIdx !== null) {
         setDraggingTimeIdx(null);
+        const { keyframes, keyframeTimes, activeKeyIdx, pushHistory } = bindRef.current;
+        pushHistory({ keyframes, keyframeTimes, activeKeyIdx });
       }
     };
 
@@ -1901,8 +1945,7 @@ export default function App() {
      const newKeyframes = keyframes.map(kf => scaleSegments(kf, newWidth));
      setKeyframes(newKeyframes);
      setSegments(newKeyframes[activeKeyIdx]);
-     setHistory([JSON.parse(JSON.stringify(newKeyframes[activeKeyIdx]))]);
-     setHistoryPtr(0);
+     pushHistory({ keyframes: newKeyframes, keyframeTimes, activeKeyIdx });
      centerView();
   };
 
@@ -2069,8 +2112,7 @@ export default function App() {
               setKeyframeTimes([0]);
               setActiveKeyIdx(0);
               setSegments(resetP);
-              setHistory([JSON.parse(JSON.stringify(resetP))]);
-              setHistoryPtr(0);
+              pushHistory({ keyframes: [resetP], keyframeTimes: [0], activeKeyIdx: 0 });
               setTimeout(centerView, 50);
             }}
             className="w-8 h-8 rounded flex items-center justify-center text-text-dim hover:bg-rose-500/20 hover:text-rose-400 transition-all"
@@ -2475,6 +2517,7 @@ export default function App() {
                     setKeyframes([[]]);
                     setKeyframeTimes([0]);
                     setActiveKeyIdx(0);
+                    pushHistory({ keyframes: [[]], keyframeTimes: [0], activeKeyIdx: 0 });
                   }}
                   className="w-full h-8 flex items-center justify-center gap-2 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold transition-all border border-rose-500/20 uppercase tracking-tight"
                 >
