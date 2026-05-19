@@ -3,16 +3,56 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   
-  --color-bg: #1A1A1C;
-  --color-panel: #252529;
-  --color-accent: #4A90E2;
-  --color-text: #E0E0E0;
-  --color-text-dim: #88888B;
-  --color-border: #38383D;
-  --color-point: #FFFFFF;
+  --color-bg: var(--theme-bg);
+  --color-panel: var(--theme-panel);
+  --color-accent: var(--theme-accent);
+  --color-text: var(--theme-text);
+  --color-text-dim: var(--theme-text-dim);
+  --color-border: var(--theme-border);
+  --color-point: var(--theme-point);
 }
 
 @layer base {
+  :root, :root[data-theme="dark"] {
+    --theme-bg: #1A1A1C;
+    --theme-panel: #252529;
+    --theme-accent: #4A90E2;
+    --theme-text: #E0E0E0;
+    --theme-text-dim: #88888B;
+    --theme-border: #38383D;
+    --theme-point: #FFFFFF;
+  }
+
+  :root[data-theme="light"] {
+    --theme-bg: #F5F5F7;
+    --theme-panel: #FFFFFF;
+    --theme-accent: #007AFF;
+    --theme-text: #1D1D1F;
+    --theme-text-dim: #86868B;
+    --theme-border: #D2D2D7;
+    --theme-point: #000000;
+  }
+
+  :root[data-theme="notion"] {
+    --theme-bg: #FFFFFF;
+    --theme-panel: #F7F7F5;
+    --theme-accent: #EA4335;
+    --theme-text: #37352F;
+    --theme-text-dim: #999999;
+    --theme-border: #EAEAE9;
+    --theme-point: #000000;
+  }
+
+  :root[data-theme="retro"] {
+    --theme-bg: #2B213A;
+    --theme-panel: #3A2D4D;
+    --theme-accent: #FF2A6D;
+    --theme-text: #05D9E8;
+    --theme-text-dim: #D1F7FF;
+    --theme-border: #01FFE5;
+    --theme-point: #FDFB02;
+  }
+
   body {
     @apply bg-bg text-text antialiased;
     font-family: var(--font-sans);

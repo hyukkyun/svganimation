@@ -427,6 +427,12 @@ const ColorInput = ({ label, value, onChange }: { label: string, value: string, 
 };
 
 export default function App() {
+  const [uiTheme, setUiTheme] = useState<'dark' | 'light' | 'notion' | 'retro'>('dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', uiTheme);
+  }, [uiTheme]);
+
   const [segments, setSegments] = useState<PathSegment[]>(DEFAULT_PATH_SCALED);
   const [initialImportedPath, setInitialImportedPath] = useState<PathSegment[]>(DEFAULT_PATH_SCALED);
   const [keyframes, setKeyframes] = useState<PathSegment[][]>([DEFAULT_PATH_SCALED]);
@@ -1844,6 +1850,18 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <select 
+            value={uiTheme} 
+            onChange={(e) => setUiTheme(e.target.value as any)}
+            className="bg-bg border border-border text-xs px-2 py-1.5 rounded focus:outline-none focus:border-accent text-text-dim hover:text-text transition-colors cursor-pointer"
+            title="UI Theme"
+          >
+            <option value="dark">🌙 Dark Minimal</option>
+            <option value="light">☀️ Light macOS</option>
+            <option value="notion">📝 Notion Style</option>
+            <option value="retro">🕹️ Synthwave Retro</option>
+          </select>
+
           <select 
             value={exportFraming} 
             onChange={(e) => setExportFraming(e.target.value as any)}
