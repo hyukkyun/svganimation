@@ -436,6 +436,7 @@ export default function App() {
   const [segments, setSegments] = useState<PathSegment[]>(DEFAULT_PATH_SCALED);
   const [initialImportedPath, setInitialImportedPath] = useState<PathSegment[]>(DEFAULT_PATH_SCALED);
   const [keyframes, setKeyframes] = useState<PathSegment[][]>([DEFAULT_PATH_SCALED]);
+  const [keyframeTimes, setKeyframeTimes] = useState<number[]>([0]);
   
   // History for segments
   const [history, setHistory] = useState<PathSegment[][]>([DEFAULT_PATH_SCALED]);
@@ -788,6 +789,7 @@ export default function App() {
       const fittedSegments = fitSegmentsToCanvas(parsedSegments, 300, 150, 150);
       
       setKeyframes([fittedSegments]);
+      setKeyframeTimes([0]);
       setInitialImportedPath(JSON.parse(JSON.stringify(fittedSegments)));
       setActiveKeyIdx(0);
       setSegments(JSON.parse(JSON.stringify(fittedSegments)));
@@ -1409,7 +1411,6 @@ export default function App() {
 
         let frameSegments = segments;
         if (keyframes.length >= 2) {
-          const totalSteps = keyframes.length - 1;
           let globalProgress = progress;
           
           if (easingMode === 'global') {
@@ -1417,10 +1418,19 @@ export default function App() {
              globalProgress = easeFn(globalProgress);
           }
           
-          const scaledProgress = globalProgress * totalSteps;
-          const stepIdx = Math.min(Math.floor(scaledProgress), totalSteps - 1);
+          const t = globalProgress * 100;
+          let stepIdx = 0;
+          while (stepIdx < keyframeTimes.length - 1 && t >= keyframeTimes[stepIdx + 1]) {
+             stepIdx++;
+          }
+          if (stepIdx >= keyframeTimes.length - 1) {
+             stepIdx = keyframeTimes.length - 2;
+          }
           
-          let stepProgress = scaledProgress - stepIdx;
+          const t0 = keyframeTimes[stepIdx];
+          const t1 = keyframeTimes[stepIdx + 1];
+          let stepProgress = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+          stepProgress = Math.max(0, Math.min(1, stepProgress));
           
           if (easingMode === 'local') {
              const easeFn = EASING_MATH[animEasing] || EASING_MATH.linear;
@@ -1737,7 +1747,6 @@ export default function App() {
     
     if (keyframes.length < 2) return segments;
     
-    const totalSteps = keyframes.length - 1;
     let globalProgress = animProgress;
 
     if (easingMode === 'global') {
@@ -1745,10 +1754,19 @@ export default function App() {
        globalProgress = easeFn(globalProgress);
     }
     
-    const scaledProgress = globalProgress * totalSteps;
-    const stepIdx = Math.min(Math.floor(scaledProgress), totalSteps - 1);
+    const t = globalProgress * 100;
+    let stepIdx = 0;
+    while (stepIdx < keyframeTimes.length - 1 && t >= keyframeTimes[stepIdx + 1]) {
+       stepIdx++;
+    }
+    if (stepIdx >= keyframeTimes.length - 1) {
+       stepIdx = keyframeTimes.length - 2;
+    }
     
-    let stepProgress = scaledProgress - stepIdx;
+    const t0 = keyframeTimes[stepIdx];
+    const t1 = keyframeTimes[stepIdx + 1];
+    let stepProgress = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+    stepProgress = Math.max(0, Math.min(1, stepProgress));
     
     if (easingMode === 'local') {
        const easeFn = EASING_MATH[animEasing] || EASING_MATH.linear;
@@ -1756,7 +1774,7 @@ export default function App() {
     }
     
     return lerpSegments(keyframes[stepIdx], keyframes[stepIdx + 1], stepProgress);
-  }, [isAnimating, isRecording, keyframes, segments, animProgress, easingMode, animEasing]);
+  }, [isAnimating, isRecording, keyframes, keyframeTimes, segments, animProgress, easingMode, animEasing]);
 
   // Memoize strings
   const currentPathString = React.useMemo(() => stringifyPath(displayedSegments), [displayedSegments]);
@@ -1765,6 +1783,19 @@ export default function App() {
   const addKeyframe = () => {
     const newKeyframes = [...keyframes];
     newKeyframes.push(JSON.parse(JSON.stringify(segments)));
+    
+    let newTimes: number[];
+    if (keyframeTimes.length === 1) {
+      newTimes = [0, 100];
+    } else {
+      // Scale down existing to make room for new one at 100
+      // e.g. [0, 50, 100] -> [0, 33.3, 66.6, 100] (scaling by len-1 / len)
+      const scale = (keyframeTimes.length - 1) / keyframeTimes.length;
+      newTimes = keyframeTimes.map(t => t * scale);
+      newTimes.push(100);
+    }
+    
+    setKeyframeTimes(newTimes);
     setKeyframes(newKeyframes);
     setActiveKeyIdx(newKeyframes.length - 1);
   };
@@ -1778,6 +1809,19 @@ export default function App() {
   const removeKeyframe = (idx: number) => {
     if (keyframes.length <= 1) return;
     const newKeyframes = keyframes.filter((_, i) => i !== idx);
+    let newTimes = keyframeTimes.filter((_, i) => i !== idx);
+    
+    // Normalize newTimes so the last one is 100, if length > 1
+    if (newTimes.length === 1) {
+      newTimes = [0];
+    } else {
+      const maxTime = newTimes[newTimes.length - 1];
+      if (maxTime > 0) {
+        newTimes = newTimes.map(t => (t / maxTime) * 100);
+      }
+    }
+    
+    setKeyframeTimes(newTimes);
     setKeyframes(newKeyframes);
     setActiveKeyIdx(Math.max(0, activeKeyIdx - 1));
     setSegments(JSON.parse(JSON.stringify(newKeyframes[Math.max(0, activeKeyIdx - 1)])));
@@ -1787,6 +1831,46 @@ export default function App() {
     setActiveKeyIdx(idx);
     setSegments(JSON.parse(JSON.stringify(keyframes[idx])));
   };
+
+  const [draggingTimeIdx, setDraggingTimeIdx] = useState<number | null>(null);
+
+  const timelineRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleTimelineMouseMove = (e: MouseEvent) => {
+      if (draggingTimeIdx !== null && timelineRef.current) {
+        let rect = timelineRef.current.getBoundingClientRect();
+        let pos = (e.clientX - rect.left) / rect.width * 100;
+        
+        // Clamp to neighbors
+        const minTime = draggingTimeIdx === 0 ? 0 : (keyframeTimes[draggingTimeIdx - 1] + 1);
+        const maxTime = draggingTimeIdx === keyframeTimes.length - 1 ? 100 : (keyframeTimes[draggingTimeIdx + 1] - 1);
+        
+        pos = Math.max(minTime, Math.min(pos, maxTime));
+        
+        setKeyframeTimes(prev => {
+           const next = [...prev];
+           next[draggingTimeIdx] = pos;
+           return next;
+        });
+      }
+    };
+
+    const handleTimelineMouseUp = () => {
+      if (draggingTimeIdx !== null) {
+        setDraggingTimeIdx(null);
+      }
+    };
+
+    if (draggingTimeIdx !== null) {
+      window.addEventListener('mousemove', handleTimelineMouseMove);
+      window.addEventListener('mouseup', handleTimelineMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleTimelineMouseMove);
+      window.removeEventListener('mouseup', handleTimelineMouseUp);
+    };
+  }, [draggingTimeIdx, keyframeTimes]);
 
   const [isDraggingFile, setIsDraggingFile] = useState(false);
 
@@ -1982,6 +2066,7 @@ export default function App() {
             onClick={() => {
               const resetP = JSON.parse(JSON.stringify(initialImportedPath));
               setKeyframes([resetP]);
+              setKeyframeTimes([0]);
               setActiveKeyIdx(0);
               setSegments(resetP);
               setHistory([JSON.parse(JSON.stringify(resetP))]);
@@ -2388,6 +2473,7 @@ export default function App() {
                   onClick={() => {
                     setSegments([]);
                     setKeyframes([[]]);
+                    setKeyframeTimes([0]);
                     setActiveKeyIdx(0);
                   }}
                   className="w-full h-8 flex items-center justify-center gap-2 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold transition-all border border-rose-500/20 uppercase tracking-tight"
@@ -2788,7 +2874,7 @@ export default function App() {
         
         <div className="flex-1 border border-border rounded-lg bg-bg relative flex items-center px-12 group/timeline overflow-hidden">
           {/* Keyframe Track */}
-          <div className="flex-1 h-0.5 bg-border mx-4 relative">
+          <div className="flex-1 h-0.5 bg-border mx-4 relative" ref={timelineRef}>
              <div 
                style={{ width: `${animProgress * 100}%` }}
                className="h-full bg-accent shadow-[0_0_10px_var(--color-accent)] opacity-30"
@@ -2796,16 +2882,28 @@ export default function App() {
 
              {/* Keyframes */}
              {keyframes.map((_, idx) => {
-               const pos = (idx / (keyframes.length - 1 || 1)) * 100;
+               const pos = keyframeTimes[idx] ?? 0;
                return (
                  <div 
                    key={`kf-${idx}`}
                    style={{ left: `${pos}%` }}
                    className={cn(
-                     "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 transition-all cursor-pointer z-10 flex items-center justify-center group/kf",
-                     idx === activeKeyIdx ? "border-accent bg-panel scale-125 shadow-[0_0_8px_var(--color-accent)]" : "border-text-dim bg-panel hover:border-accent"
+                     "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 transition cursor-pointer z-10 flex items-center justify-center group/kf focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-panel focus-visible:ring-accent",
+                     idx === activeKeyIdx ? "border-accent bg-panel scale-125 shadow-[0_0_8px_var(--color-accent)]" : "border-text-dim bg-panel hover:border-accent",
+                     draggingTimeIdx === idx && "z-20 scale-125 shadow-lg"
                    )}
-                   onClick={() => selectKeyframe(idx)}
+                   tabIndex={0}
+                   onMouseDown={(e) => {
+                     e.stopPropagation();
+                     selectKeyframe(idx);
+                     setDraggingTimeIdx(idx);
+                   }}
+                   onKeyDown={(e) => {
+                     if (e.key === 'Delete' || e.key === 'Backspace') {
+                       e.stopPropagation();
+                       removeKeyframe(idx);
+                     }
+                   }}
                  >
                    <div className={cn(
                      "w-1.5 h-1.5 rounded-full transition-colors",
