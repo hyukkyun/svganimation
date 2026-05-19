@@ -438,17 +438,50 @@ export default function App() {
   const [keyframes, setKeyframes] = useState<PathSegment[][]>([DEFAULT_PATH_SCALED]);
   const [keyframeTimes, setKeyframeTimes] = useState<number[]>([0]);
   
-  // History for segments
+  type ConfigSettings = {
+    stroke: string;
+    strokeWidth: number;
+    fill: string;
+    fillOpacity: number;
+    canvasBg: string;
+    pointStyle: 'circle' | 'square';
+    handleStyle: 'circle' | 'square' | 'x-shape';
+    anchorSize: number;
+    anchorColor: string;
+    anchorStrokeColor: string;
+    anchorFillOpacity: number;
+    handleSize: number;
+    handleColor: string;
+    handleFillOpacity: number;
+    handleLineColor: string;
+    handleLineWidth: number;
+    guideColor: string;
+    guideThickness: number;
+    guideZIndex: 'front' | 'back';
+    snapToGuides: boolean;
+  };
+
   type HistoryState = {
     keyframes: PathSegment[][][];
     keyframeTimes: number[];
     activeKeyIdx: number;
+    settings: ConfigSettings;
   };
+  const initialSettings: ConfigSettings = {
+    stroke: '#eeeeee', strokeWidth: 1, fill: '#000000', fillOpacity: 1, canvasBg: '#111111',
+    pointStyle: 'square', handleStyle: 'circle', anchorSize: 3, anchorColor: '#111111',
+    anchorStrokeColor: '#eeeeee', anchorFillOpacity: 1, handleSize: 2, handleColor: '#111111',
+    handleFillOpacity: 1, handleLineColor: '#eeeeee', handleLineWidth: 1, guideColor: '#ffeb3b',
+    guideThickness: 1, guideZIndex: 'back', snapToGuides: true
+  };
+
   const [history, setHistory] = useState<HistoryState[]>([{
     keyframes: [DEFAULT_PATH_SCALED],
     keyframeTimes: [0],
     activeKeyIdx: 0,
+    settings: initialSettings,
   }]);
+
   const [historyPtr, setHistoryPtr] = useState(0);
   const [activeKeyIdx, setActiveKeyIdx] = useState(0);
   
@@ -605,13 +638,51 @@ export default function App() {
     });
   };
 
-  const pushHistory = (newState: HistoryState) => {
+  const lastPushedSettingsRef = useRef(JSON.stringify(initialSettings));
+
+  const getCurrentSettings = (): ConfigSettings => ({
+    stroke, strokeWidth, fill, fillOpacity, canvasBg,
+    pointStyle, handleStyle, anchorSize, anchorColor,
+    anchorStrokeColor, anchorFillOpacity, handleSize,
+    handleColor, handleFillOpacity, handleLineColor,
+    handleLineWidth, guideColor, guideThickness,
+    guideZIndex, snapToGuides
+  });
+
+  useEffect(() => {
+    const currentSettingsStr = JSON.stringify(getCurrentSettings());
+    if (currentSettingsStr !== lastPushedSettingsRef.current) {
+      const timer = setTimeout(() => {
+        const { keyframes, keyframeTimes, activeKeyIdx, pushHistory } = bindRef.current;
+        pushHistory({ keyframes, keyframeTimes, activeKeyIdx });
+        lastPushedSettingsRef.current = currentSettingsStr;
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [stroke, strokeWidth, fill, fillOpacity, canvasBg, pointStyle, handleStyle, anchorSize, anchorColor, anchorStrokeColor, anchorFillOpacity, handleSize, handleColor, handleFillOpacity, handleLineColor, handleLineWidth, guideColor, guideThickness, guideZIndex, snapToGuides]);
+
+  const pushHistory = (newState: Omit<HistoryState, 'settings'> & { settings?: ConfigSettings }) => {
     const newHistory = history.slice(0, historyPtr + 1);
-    newHistory.push(JSON.parse(JSON.stringify(newState)));
+    const completeState: HistoryState = {
+      ...newState,
+      settings: newState.settings ?? getCurrentSettings()
+    };
+    newHistory.push(JSON.parse(JSON.stringify(completeState)));
     // Limit history size to 50
     if (newHistory.length > 50) newHistory.shift();
     setHistory(newHistory);
     setHistoryPtr(newHistory.length - 1);
+    lastPushedSettingsRef.current = JSON.stringify(completeState.settings);
+  };
+
+  const applySettings = (s: ConfigSettings) => {
+    lastPushedSettingsRef.current = JSON.stringify(s);
+    setStroke(s.stroke); setStrokeWidth(s.strokeWidth); setFill(s.fill); setFillOpacity(s.fillOpacity); setCanvasBg(s.canvasBg);
+    setPointStyle(s.pointStyle); setHandleStyle(s.handleStyle); setAnchorSize(s.anchorSize); setAnchorColor(s.anchorColor);
+    setAnchorStrokeColor(s.anchorStrokeColor); setAnchorFillOpacity(s.anchorFillOpacity); setHandleSize(s.handleSize);
+    setHandleColor(s.handleColor); setHandleFillOpacity(s.handleFillOpacity); setHandleLineColor(s.handleLineColor);
+    setHandleLineWidth(s.handleLineWidth); setGuideColor(s.guideColor); setGuideThickness(s.guideThickness);
+    setGuideZIndex(s.guideZIndex); setSnapToGuides(s.snapToGuides);
   };
 
   const undo = useCallback(() => {
@@ -623,6 +694,7 @@ export default function App() {
       setKeyframeTimes(cloned.keyframeTimes);
       setActiveKeyIdx(cloned.activeKeyIdx);
       setSegments(cloned.keyframes[cloned.activeKeyIdx]);
+      if (cloned.settings) applySettings(cloned.settings);
     }
   }, [history, historyPtr]);
 
@@ -635,6 +707,7 @@ export default function App() {
       setKeyframeTimes(cloned.keyframeTimes);
       setActiveKeyIdx(cloned.activeKeyIdx);
       setSegments(cloned.keyframes[cloned.activeKeyIdx]);
+      if (cloned.settings) applySettings(cloned.settings);
     }
   }, [history, historyPtr]);
 
