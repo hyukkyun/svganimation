@@ -711,16 +711,31 @@ export default function App() {
     }
   }, [history, historyPtr]);
 
-  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory });
+  const revertToSavedState = useCallback(() => {
+    const prev = history[historyPtr];
+    const cloned = JSON.parse(JSON.stringify(prev));
+    setKeyframes(cloned.keyframes);
+    setKeyframeTimes(cloned.keyframeTimes);
+    setActiveKeyIdx(cloned.activeKeyIdx);
+    setSegments(cloned.keyframes[cloned.activeKeyIdx]);
+    if (cloned.settings) applySettings(cloned.settings);
+  }, [history, historyPtr]);
+
+  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState });
   useEffect(() => {
-    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory };
+    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState };
   });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if (isInput) {
+        const type = (e.target as HTMLInputElement).type;
+        const isTextInput = type === 'text' || type === 'number' || e.target instanceof HTMLTextAreaElement;
+        if (isTextInput) return;
+      }
       
-      const { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes } = bindRef.current;
+      const { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, getCurrentSettings, lastPushedSettingsStr, revertToSavedState } = bindRef.current;
       
       // Guide deletion
       if ((e.code === 'Delete' || e.code === 'Backspace') && activeGuide) {
@@ -770,8 +785,14 @@ export default function App() {
       // Undo/Redo shortcuts
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
+        
+        const currentStr = JSON.stringify(getCurrentSettings());
+        if (currentStr !== lastPushedSettingsStr) {
+          revertToSavedState();
+        } else {
+          if (e.shiftKey) redo();
+          else undo();
+        }
       }
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') {
         e.preventDefault();
