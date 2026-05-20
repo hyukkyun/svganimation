@@ -1,5 +1,5 @@
 {
-  "name": "Vector Morph Editor",
+  "name": "Bezier Animator",
   "description": "An interactive SVG path editor for manipulating anchor points and handles, featuring stroke/fill customization and smooth path morphing animations.",
   "requestFramePermissions": [],
   "majorCapabilities": []
