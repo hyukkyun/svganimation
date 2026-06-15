@@ -1858,10 +1858,9 @@ export default function App() {
     if (isAnimating) {
       controls = animate(0, 1, {
         duration: animDuration,
-        repeat: Infinity,
-        repeatType: "reverse",
         ease: "linear", // Always animate linearly, we handle custom math locally 
-        onUpdate: (latest) => setAnimProgress(latest)
+        onUpdate: (latest) => setAnimProgress(latest),
+        onComplete: () => setIsAnimating(false)
       });
     } else {
       setAnimProgress(1); // Show current state when not animating
