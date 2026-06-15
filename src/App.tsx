@@ -721,9 +721,9 @@ export default function App() {
     if (cloned.settings) applySettings(cloned.settings);
   }, [history, historyPtr]);
 
-  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState });
+  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState, addKeyframe: null as null | (() => void) });
   useEffect(() => {
-    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState };
+    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState, addKeyframe: null };
   });
 
   useEffect(() => {
@@ -735,7 +735,7 @@ export default function App() {
         if (isTextInput) return;
       }
       
-      const { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, getCurrentSettings, lastPushedSettingsStr, revertToSavedState } = bindRef.current;
+      const { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, getCurrentSettings, lastPushedSettingsStr, revertToSavedState } = bindRef.current;
       
       // Guide deletion
       if ((e.code === 'Delete' || e.code === 'Backspace') && activeGuide) {
@@ -803,6 +803,29 @@ export default function App() {
         case 'KeyV': setTool('select'); break;
         case 'KeyH': setTool('hand'); break;
         case 'KeyZ': setTool('zoom'); break;
+        case 'KeyD':
+          if (bindRef.current.addKeyframe) {
+            bindRef.current.addKeyframe();
+          } else {
+            const { keyframes, segments, keyframeTimes, pushHistory } = bindRef.current;
+            const newKeyframes = [...keyframes];
+            newKeyframes.push(JSON.parse(JSON.stringify(segments)));
+            
+            let newTimes: number[];
+            if (keyframeTimes.length === 1) {
+              newTimes = [0, 100];
+            } else {
+              const scale = (keyframeTimes.length - 1) / keyframeTimes.length;
+              newTimes = keyframeTimes.map(t => t * scale);
+              newTimes.push(100);
+            }
+            
+            setKeyframeTimes(newTimes);
+            setKeyframes(newKeyframes);
+            setActiveKeyIdx(newKeyframes.length - 1);
+            pushHistory({ keyframes: newKeyframes, keyframeTimes: newTimes, activeKeyIdx: newKeyframes.length - 1 });
+          }
+          break;
         case 'Space': 
           e.preventDefault();
           if (!e.repeat) setTool('hand'); 
@@ -1930,6 +1953,10 @@ export default function App() {
     setActiveKeyIdx(nextIdx);
     pushHistory({ keyframes: newKeyframes, keyframeTimes: newTimes, activeKeyIdx: nextIdx });
   };
+  
+  useEffect(() => {
+    bindRef.current.addKeyframe = addKeyframe;
+  }, [addKeyframe]);
 
   const updateKeyframe = (idx: number) => {
     const newKeyframes = [...keyframes];
