@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, setDoc, doc, serverTimestamp, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
-import { Loader2, Plus, X, Copy, CheckCircle2, Search, Trash2 } from 'lucide-react';
+import { Loader2, Plus, X, Copy, CheckCircle2, Search, Trash2, Download } from 'lucide-react';
 
 export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [codes, setCodes] = useState<any[]>([]);
@@ -126,6 +126,32 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const usedCount = codes.filter(c => c.isUsed).length;
   const unusedCount = totalCount - usedCount;
 
+  const exportToCSV = () => {
+    try {
+      const csvData = [
+        ['코드', '상태', '사용자', '생성일'].join(','),
+        ...filteredCodes.map(c => {
+          const status = c.isUsed ? '사용됨' : '미사용';
+          const user = c.usedByEmail || c.usedBy || '';
+          const date = c.createdAt ? new Date(c.createdAt.seconds * 1000).toLocaleString() : '';
+          return `${c.code},${status},${user},"${date}"`;
+        })
+      ].join('\n');
+
+      const blob = new Blob(['\uFEFF' + csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `invitation_codes_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('엑셀 다운로드에 실패했습니다.');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-sans text-text">
       <div className="bg-surface border border-accent/20 rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col relative overflow-hidden">
@@ -164,6 +190,13 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
               >
                 {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 코드 생성
+              </button>
+              <button
+                onClick={exportToCSV}
+                className="flex items-center justify-center gap-2 px-3 h-10 bg-surface border border-border text-text font-medium rounded-lg hover:bg-border/50 transition-colors whitespace-nowrap"
+                title="엑셀(CSV) 다운로드"
+              >
+                <Download className="w-4 h-4" />
               </button>
             </div>
           </div>
