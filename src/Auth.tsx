@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signInWithPopup, 
+  signInWithRedirect,
   sendPasswordResetEmail,
   User
 } from 'firebase/auth';
@@ -56,7 +57,7 @@ export default function Auth({ onAuthenticated }: { onAuthenticated: (user: User
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (err: any) {
       setError(err.message || '구글 로그인에 실패했습니다.');
     }
