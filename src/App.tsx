@@ -2298,7 +2298,7 @@ export default function App() {
               viewBox="0 0 300 300" 
               xmlns="http://www.w3.org/2000/svg"
               className={cn(
-                "w-full h-full max-w-[800px] max-h-[600px] drop-shadow-2xl overflow-visible touch-none",
+                "w-full h-full max-w-[800px] max-h-[600px] overflow-visible touch-none",
                 !activePoint && !isAnimating && "transition-transform duration-300",
                 tool === 'hand' && "cursor-grab",
                 tool === 'hand' && isPanning && "cursor-grabbing",
