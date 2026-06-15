@@ -75,8 +75,9 @@ export default function Auth({ onAuthenticated }: { onAuthenticated: (user: User
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      if (err.code === 'auth/popup-blocked') {
-        setError('팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요. (인앱 브라우저인 경우 사파리나 크롬으로 열어주세요)');
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+        // Fallback to redirect if popup is blocked or cancelled
+        await signInWithRedirect(auth, googleProvider);
       } else {
         setError(err.message || '구글 로그인에 실패했습니다.');
       }
