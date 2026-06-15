@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signInWithPopup, 
   signInWithRedirect,
+  getRedirectResult,
   sendPasswordResetEmail,
   User
 } from 'firebase/auth';
@@ -16,6 +17,21 @@ export default function Auth({ onAuthenticated }: { onAuthenticated: (user: User
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [resetMessage, setResetMessage] = useState('');
+
+  useEffect(() => {
+    // Handle redirect result if coming back from redirect sign-in
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        // User is signed in
+        onAuthenticated(result.user);
+      }
+    }).catch((err) => {
+      console.error(err);
+      if (err.code !== 'auth/redirect-cancelled-by-user') {
+        setError(err.message || '구글 로그인 중 오류가 발생했습니다.');
+      }
+    });
+  }, [onAuthenticated]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,9 +73,14 @@ export default function Auth({ onAuthenticated }: { onAuthenticated: (user: User
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      setError(err.message || '구글 로그인에 실패했습니다.');
+      if (err.code === 'auth/popup-blocked') {
+        // Fallback to redirect if popup is blocked by the browser
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        setError(err.message || '구글 로그인에 실패했습니다.');
+      }
     }
   };
 
