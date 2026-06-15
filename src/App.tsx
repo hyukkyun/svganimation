@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { User, signOut } from 'firebase/auth';
+import { collection, query, orderBy, getDocs, setDoc, deleteDoc, doc } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import AdminPanel from './AdminPanel';
 import { 
   Upload, 
   Settings2, 
@@ -20,7 +24,10 @@ import {
   Video,
   Loader2,
   Undo2,
-  Redo2
+  Redo2,
+  LogOut,
+  UserCircle,
+  ShieldAlert
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { parsePath, stringifyPath, lerpSegments, fitSegmentsToCanvas, getBoundingBox, scaleSegments, PathState, PathSegment } from './lib/vector-utils';
@@ -426,8 +433,9 @@ const ColorInput = ({ label, value, onChange }: { label: string, value: string, 
   );
 };
 
-export default function App() {
+export default function App({ user }: { user?: User }) {
   const [uiTheme, setUiTheme] = useState<'dark' | 'light' | 'notion' | 'retro'>('dark');
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', uiTheme);
@@ -529,6 +537,103 @@ export default function App() {
   
   const [exportRes, setExportRes] = useState<'720p' | '1080p' | '2k' | '4k'>('1080p');
   const [exportFraming, setExportFraming] = useState<'auto' | 'viewport'>('auto');
+
+  // Presets state
+  const [presets, setPresets] = useState<{id: string; name: string; settings: ConfigSettings; createdAt: number}[]>([]);
+  const [isPresetsLoading, setIsPresetsLoading] = useState(false);
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [presetInputName, setPresetInputName] = useState('');
+  const [presetError, setPresetError] = useState('');
+  const [presetLoadError, setPresetLoadError] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    const loadPresets = async () => {
+      setIsPresetsLoading(true);
+      setPresetLoadError('');
+      try {
+        const snapshot = await getDocs(query(collection(db, 'users', user.uid, 'presets'), orderBy('createdAt', 'asc')));
+        const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        setPresets(loaded);
+      } catch (err: any) {
+        console.error("Failed to load presets", err);
+        setPresetLoadError(err.message || '알 수 없는 오류');
+      } finally {
+        setIsPresetsLoading(false);
+      }
+    };
+    loadPresets();
+  }, [user]);
+
+  const handleSavePresetClick = () => {
+    if (!user) return;
+    if (presets.length >= 10) {
+      alert("스타일 프리셋은 최대 10개까지 저장할 수 있습니다.");
+      return;
+    }
+    setPresetInputName(`스타일 ${presets.length + 1}`);
+    setPresetError('');
+    setIsSavingPreset(true);
+  };
+
+  const confirmSavePreset = async () => {
+    setPresetError('');
+    if (!user) {
+      setPresetError("로그인이 필요합니다.");
+      setIsSavingPreset(false);
+      return;
+    }
+    if (!presetInputName.trim()) {
+      setPresetError("프리셋 이름을 입력해주세요.");
+      return;
+    }
+    if (isPresetsLoading) return;
+
+    setIsPresetsLoading(true);
+
+    try {
+      const currentSettings = getCurrentSettings();
+      // Ensure all settings are defined
+      Object.keys(currentSettings).forEach((key) => {
+        if ((currentSettings as any)[key] === undefined) {
+          throw new Error(`${key} is undefined in currentSettings`);
+        }
+      });
+      
+      const newPresetRef = doc(collection(db, 'users', user.uid, 'presets'));
+      const presetData = {
+        name: presetInputName.trim(),
+        settings: currentSettings,
+        createdAt: Date.now()
+      };
+      await setDoc(newPresetRef, presetData);
+      setPresets(prev => [...prev, { id: newPresetRef.id, ...presetData }]);
+      setIsSavingPreset(false);
+      setPresetInputName('');
+    } catch (err: any) {
+      console.error('Preset save error:', err);
+      setPresetError(`프리셋 저장 실패: ${err.message || '알 수 없음'}`);
+    } finally {
+      setIsPresetsLoading(false);
+    }
+  };
+
+  const deletePreset = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user) return;
+    if (!window.confirm("정말로 이 프리셋을 삭제하시겠습니까?")) return;
+    try {
+      await deleteDoc(doc(db, 'users', user.uid, 'presets', id));
+      setPresets(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert("삭제에 실패했습니다.");
+    }
+  };
+
+  const applyPreset = (settings: ConfigSettings) => {
+    applySettings(settings);
+  };
 
   // Viewport state
   const [zoom, setZoom] = useState(1);
@@ -2164,6 +2269,39 @@ export default function App() {
           >
             Export SVG
           </button>
+          
+          <div className="w-[1px] h-4 bg-border mx-1" />
+          
+          <div className="flex items-center gap-2 text-text-dim text-sm">
+            {user ? (
+              <>
+                {user.email === 'skywings38@gmail.com' && (
+                  <button
+                    onClick={() => setShowAdminPanel(true)}
+                    className="p-1.5 text-text-dim hover:text-accent hover:bg-accent/10 rounded transition-colors"
+                    title="초대 코드 관리 (관리자)"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-bg border border-border" title={user.email || 'User'}>
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="Profile" className="w-5 h-5 rounded-full" referrerPolicy="no-referrer" />
+                  ) : (
+                    <UserCircle className="w-5 h-5 text-accent" />
+                  )}
+                  <span className="text-xs truncate max-w-[100px]">{user.displayName || user.email?.split('@')[0]}</span>
+                </div>
+                <button
+                  onClick={() => signOut(auth)}
+                  className="p-1.5 text-text-dim hover:text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -2665,6 +2803,101 @@ export default function App() {
             </div>
 
             <div>
+              <div className="flex items-center justify-between border-b border-border pb-1.5 mb-4">
+                <div className="text-[11px] font-bold text-text-dim uppercase tracking-widest">Style Presets</div>
+                {user && !isSavingPreset && (
+                  <button 
+                    onClick={handleSavePresetClick}
+                    disabled={presets.length >= 10}
+                    className="text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded font-bold hover:bg-accent/30 transition-colors disabled:opacity-50"
+                  >
+                    SAVE
+                  </button>
+                )}
+              </div>
+              {isSavingPreset && (
+                <div className="mb-4 bg-surface p-2 rounded border border-border flex flex-col gap-2">
+                  <input 
+                    type="text" 
+                    value={presetInputName}
+                    onChange={e => setPresetInputName(e.target.value)}
+                    className="w-full text-xs bg-background border border-border rounded px-2 py-1 outline-none focus:border-accent text-text"
+                    placeholder="프리셋 이름"
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        confirmSavePreset();
+                      }
+                      if (e.key === 'Escape') setIsSavingPreset(false);
+                    }}
+                  />
+                  {presetError && <div className="text-[10px] text-red-500 font-medium leading-tight">{presetError}</div>}
+                  <div className="flex gap-1 justify-end">
+                    <button 
+                      onClick={() => setIsSavingPreset(false)}
+                      className="text-[10px] px-2 py-1 text-text-dim hover:text-text"
+                    >
+                      취소
+                    </button>
+                    <button 
+                      onClick={confirmSavePreset}
+                      disabled={isPresetsLoading}
+                      className="text-[10px] bg-accent text-background px-2 py-1 rounded font-bold hover:opacity-90 disabled:opacity-50"
+                    >
+                      {isPresetsLoading ? '저장 중...' : '확인'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!user ? (
+                <div className="text-xs text-text-dim text-center py-2 bg-background border border-border rounded opacity-70">
+                  <p>로그인하여 프리셋 저장</p>
+                </div>
+              ) : presetLoadError ? (
+                <div className="text-xs text-red-400 text-center py-2 bg-background border border-border rounded opacity-70">
+                  <p>로드 실패: {presetLoadError}</p>
+                </div>
+              ) : isPresetsLoading ? (
+                <div className="flex justify-center py-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-text-dim" />
+                </div>
+              ) : presets.length === 0 ? (
+                <div className="text-xs text-text-dim text-center py-2 bg-background border border-border rounded opacity-70">
+                  <p>저장된 프리셋이 없습니다.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {presets.map(p => (
+                    <div 
+                      key={p.id} 
+                      onClick={() => applyPreset(p.settings)}
+                      className="group flex flex-col p-2 bg-background border border-border rounded cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-text">{p.name}</span>
+                        <button 
+                          onClick={(e) => deletePreset(p.id, e)}
+                          className="text-text-dim hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {/* Preview dots for key colors */}
+                        <div className="w-4 h-4 rounded-full border border-border shadow-sm" style={{ backgroundColor: p.settings.fill }} title="Fill" />
+                        <div className="w-4 h-4 rounded-full border border-border shadow-sm flex items-center justify-center" style={{ backgroundColor: p.settings.stroke }} title="Stroke">
+                           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.settings.canvasBg }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-text-dim text-right mt-1">{presets.length} / 10</div>
+                </div>
+              )}
+            </div>
+
+            <div>
               <div className="text-[11px] font-bold text-text-dim uppercase tracking-widest border-b border-border pb-1.5 mb-4">Fill & Stroke</div>
               <div className="space-y-4">
                 <ColorInput label="Fill Color" value={fill} onChange={setFill} />
@@ -3127,6 +3360,10 @@ export default function App() {
           <span className="font-mono uppercase uppercase">Viewport: {svgRef.current ? `${Math.round(svgRef.current.clientWidth)}x${Math.round(svgRef.current.clientHeight)}` : 'Responsive'}</span>
         </div>
       </div>
+
+      {showAdminPanel && (
+        <AdminPanel onClose={() => setShowAdminPanel(false)} />
+      )}
     </div>
   );
 }

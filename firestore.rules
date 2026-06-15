@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} { allow read, write: if false; }
+
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return request.auth != null && 'email' in request.auth.token && request.auth.token.email == 'skywings38@gmail.com'; }
+    function existing() { return resource.data; }
+    function incoming() { return request.resource.data; }
+
+    match /users/{userId} {
+      allow read: if isAdmin();
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      
+      // Allow initial user creation
+      allow create: if isSignedIn() && request.auth.uid == userId && 
+                    (incoming().isActivated == false || isAdmin());
+
+      // Allow activation
+      allow update: if isAdmin() || (
+        isSignedIn() && request.auth.uid == userId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isActivated', 'invitationCode', 'updatedAt']) &&
+        incoming().isActivated == true &&
+        getAfter(/databases/$(database)/documents/invitation_codes/$(incoming().invitationCode)).data.isUsed == true &&
+        getAfter(/databases/$(database)/documents/invitation_codes/$(incoming().invitationCode)).data.usedBy == request.auth.uid
+      );
+    }
+    
+    // Explicitly separate the subcollection rule
+    match /users/{userId}/presets/{presetId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /invitation_codes/{codeId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      
+      allow create: if isAdmin() && incoming().isUsed == false;
+      allow delete: if isAdmin();
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        existing().isUsed == false &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isUsed', 'usedBy', 'usedByEmail', 'updatedAt']) &&
+        incoming().isUsed == true &&
+        incoming().usedBy == request.auth.uid
+      );
+    }
+  }
+}
