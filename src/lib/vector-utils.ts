@@ -150,11 +150,32 @@ export function scaleSegments(segments: PathSegment[], targetWidth: number): Pat
 }
 
 export function lerpSegments(segA: PathSegment[], segB: PathSegment[], t: number): PathSegment[] {
-  if (segA.length !== segB.length) return segB; // Fallback if structures differ
+  if (segA.length !== segB.length) return Math.round(t) === 0 ? segA : segB; // Fallback if structures differ
 
-  return segA.map((a, i) => {
-    const b = segB[i];
-    if (a[0] !== b[0]) return b; // Commands differ, can't easily lerp
+  let prevAx = 0, prevAy = 0;
+  let prevBx = 0, prevBy = 0;
+
+  return segA.map((aOrig, i) => {
+    let a = aOrig;
+    let bOrig = segB[i];
+    let b = bOrig;
+
+    if (a[0] === 'L' && b[0] === 'C') {
+       a = ['C', 
+         prevAx + ((a[1] as number) - prevAx) / 3, prevAy + ((a[2] as number) - prevAy) / 3,
+         prevAx + ((a[1] as number) - prevAx) * 2 / 3, prevAy + ((a[2] as number) - prevAy) * 2 / 3,
+         a[1], a[2]
+       ];
+    } else if (a[0] === 'C' && b[0] === 'L') {
+       b = ['C',
+         prevBx + ((b[1] as number) - prevBx) / 3, prevBy + ((b[2] as number) - prevBy) / 3,
+         prevBx + ((b[1] as number) - prevBx) * 2 / 3, prevBy + ((b[2] as number) - prevBy) * 2 / 3,
+         b[1], b[2]
+       ];
+    } else if (a[0] !== b[0]) {
+       // Commands differ, can't easily lerp
+       return Math.round(t) === 0 ? aOrig : bOrig;
+    }
 
     const result = [a[0]];
     for (let j = 1; j < a.length; j++) {
@@ -162,6 +183,16 @@ export function lerpSegments(segA: PathSegment[], segB: PathSegment[], t: number
       const valB = b[j] as number;
       result.push(valA + (valB - valA) * t);
     }
+    
+    if (aOrig.length > 2) {
+      prevAx = aOrig[aOrig.length - 2] as number;
+      prevAy = aOrig[aOrig.length - 1] as number;
+    }
+    if (bOrig.length > 2) {
+      prevBx = bOrig[bOrig.length - 2] as number;
+      prevBy = bOrig[bOrig.length - 1] as number;
+    }
+
     return result as PathSegment;
   });
 }

@@ -46,7 +46,7 @@ interface CornerPoint {
   currentRadius?: number;
 }
 
-const findCorners = (segs: PathSegment[]): CornerPoint[] => {
+const findCorners = (segs: PathSegment[], includeCollinear = false): CornerPoint[] => {
   const corners: CornerPoint[] = [];
   let subpathStartIdx = 0;
 
@@ -206,19 +206,24 @@ const findCorners = (segs: PathSegment[]): CornerPoint[] => {
       }
     }
     
-    if (A && C && (Math.abs(B.x - A.x) > 0.1 || Math.abs(B.y - A.y) > 0.1) && (Math.abs(B.x - C.x) > 0.1 || Math.abs(B.y - C.y) > 0.1)) {
+    if (A && C) {
        // Vector AB and BC
        const ux = A.x - B.x; const uy = A.y - B.y;
        const vx = C.x - B.x; const vy = C.y - B.y;
        const magU = Math.sqrt(ux*ux + uy*uy);
        const magV = Math.sqrt(vx*vx + vy*vy);
        
-       // Calculate angle to filter out collinear points
-       const dot = (ux*vx + uy*vy) / (magU * magV);
-       const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+       let isCorner = true;
+       if (!includeCollinear) {
+           if (magU < 0.1 || magV < 0.1) isCorner = false;
+           else {
+               const dot = (ux*vx + uy*vy) / (magU * magV);
+               const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+               if (angle >= Math.PI - 0.01) isCorner = false;
+           }
+       }
        
-       // If angle is near PI, it's a straight line, not a corner
-       if (angle < Math.PI - 0.01) {
+       if (isCorner) {
           corners.push({
             sIdx: i,
             pX: B.x, pY: B.y,
@@ -255,9 +260,12 @@ const applyCornerRadius = (segs: PathSegment[], corner: CornerPoint, d: number, 
    let currentZIdx = corner.zIdx;
 
    if (forceTopology) {
-     const allCorners = findCorners(segs);
+     const allCorners = findCorners(segs, true);
      // Use a stable proximity match to find the same corner in the current topology
-     const matched = allCorners.find(c => Math.abs(c.pX - corner.pX) < 2 && Math.abs(c.pY - corner.pY) < 2);
+     let matched = allCorners.find(c => c.sIdx === corner.sIdx);
+     if (!matched) {
+       matched = allCorners.find(c => Math.abs(c.pX - corner.pX) < 2 && Math.abs(c.pY - corner.pY) < 2);
+     }
      if (matched) {
        // We keep the original target points from the 'corner' object passed in 
        // to prevent drifting, but we need the current indices
@@ -277,10 +285,13 @@ const applyCornerRadius = (segs: PathSegment[], corner: CornerPoint, d: number, 
    const lenU = Math.sqrt(ux*ux + uy*uy);
    const lenV = Math.sqrt(vx*vx + vy*vy);
    
-   if (lenU < 0.1 || lenV < 0.1) return segs;
+   if ((lenU < 0.1 || lenV < 0.1) && !forceTopology) return segs;
 
-   const u = { x: ux / lenU, y: uy / lenU };
-   const v = { x: vx / lenV, y: vy / lenV };
+   const safeLenU = Math.max(lenU, 0.000001);
+   const safeLenV = Math.max(lenV, 0.000001);
+
+   const u = { x: ux / safeLenU, y: uy / safeLenU };
+   const v = { x: vx / safeLenV, y: vy / safeLenV };
 
    const maxD = Math.min(lenU, lenV) * 0.99; // Almost the full length
    const actualD = Math.max(0, Math.min(d, maxD));
@@ -532,7 +543,7 @@ export default function App({ user }: { user?: User }) {
   const [animDuration, setAnimDuration] = useState(2);
   const [animEasing, setAnimEasing] = useState('easeInOut');
   const [easingMode, setEasingMode] = useState<'global'|'local'>('local');
-  const [showControlsDuringAnim, setShowControlsDuringAnim] = useState(false);
+  const [showControlsDuringAnim, setShowControlsDuringAnim] = useState(true);
   const [animProgress, setAnimProgress] = useState(0);
   
   const [exportRes, setExportRes] = useState<'720p' | '1080p' | '2k' | '4k'>('1080p');
@@ -1416,7 +1427,7 @@ export default function App({ user }: { user?: User }) {
           pushedKeyframes = keyframesRef.current.map((kf, i) => {
              if (i === activeKeyIdx) return finalSegments;
              let kfSegs = [...kf.map(s => [...s] as PathSegment)];
-             const cornersToApplyk = findCorners(kfSegs).filter(c => 
+             const cornersToApplyk = findCorners(kfSegs, true).filter(c => 
                 c.sIdx === cornerDrag.corner.sIdx || 
                 (selectedAnchors.includes(cornerDrag.corner.sIdx) && selectedAnchors.includes(c.sIdx))
              );
