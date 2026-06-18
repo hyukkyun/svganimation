@@ -46,7 +46,7 @@ interface CornerPoint {
   currentRadius?: number;
 }
 
-const findCorners = (segs: PathSegment[], includeCollinear = false): CornerPoint[] => {
+const findCorners = (segs: PathSegment[], includeAll = false): CornerPoint[] => {
   const corners: CornerPoint[] = [];
   let subpathStartIdx = 0;
 
@@ -207,31 +207,29 @@ const findCorners = (segs: PathSegment[], includeCollinear = false): CornerPoint
     }
     
     if (A && C) {
-       // Vector AB and BC
-       const ux = A.x - B.x; const uy = A.y - B.y;
-       const vx = C.x - B.x; const vy = C.y - B.y;
-       const magU = Math.sqrt(ux*ux + uy*uy);
-       const magV = Math.sqrt(vx*vx + vy*vy);
-       
-       let isCorner = true;
-       if (!includeCollinear) {
-           if (magU < 0.1 || magV < 0.1) isCorner = false;
-           else {
-               const dot = (ux*vx + uy*vy) / (magU * magV);
-               const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
-               if (angle >= Math.PI - 0.01) isCorner = false;
-           }
-       }
-       
-       if (isCorner) {
-          corners.push({
-            sIdx: i,
-            pX: B.x, pY: B.y,
-            prevX: A.x, prevY: A.y,
-            nextX: C.x, nextY: C.y,
-            zIdx: -1,
-            isStartM: i === subpathStartIdx
-          });
+       const isCollinearSafe = (Math.abs(B.x - A.x) > 0.1 || Math.abs(B.y - A.y) > 0.1) && (Math.abs(B.x - C.x) > 0.1 || Math.abs(B.y - C.y) > 0.1);
+       if (isCollinearSafe || includeAll) {
+         // Vector AB and BC
+         const ux = A.x - B.x; const uy = A.y - B.y;
+         const vx = C.x - B.x; const vy = C.y - B.y;
+         const magU = Math.max(0.000001, Math.sqrt(ux*ux + uy*uy));
+         const magV = Math.max(0.000001, Math.sqrt(vx*vx + vy*vy));
+         
+         // Calculate angle to filter out collinear points
+         const dot = (ux*vx + uy*vy) / (magU * magV);
+         const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+         
+         // If angle is near PI, it's a straight line, not a corner
+         if (angle < Math.PI - 0.01 || includeAll) {
+            corners.push({
+              sIdx: i,
+              pX: B.x, pY: B.y,
+              prevX: A.x, prevY: A.y,
+              nextX: C.x, nextY: C.y,
+              zIdx: -1,
+              isStartM: i === subpathStartIdx
+            });
+         }
        }
     }
   }
@@ -463,8 +461,8 @@ export default function App({ user }: { user?: User }) {
     fill: string;
     fillOpacity: number;
     canvasBg: string;
-    pointStyle: 'circle' | 'square';
-    handleStyle: 'circle' | 'square' | 'x-shape';
+    pointStyle: 'circle' | 'square' | 'i-shape';
+    handleStyle: 'circle' | 'square' | 'x-shape' | 'i-shape';
     anchorSize: number;
     anchorColor: string;
     anchorStrokeColor: string;
@@ -509,8 +507,8 @@ export default function App({ user }: { user?: User }) {
   const [fill, setFill] = useState('#000000');
   const [fillOpacity, setFillOpacity] = useState(1);
   const [canvasBg, setCanvasBg] = useState('#111111');
-  const [pointStyle, setPointStyle] = useState<'circle' | 'square'>('square');
-  const [handleStyle, setHandleStyle] = useState<'circle' | 'square' | 'x-shape'>('circle');
+  const [pointStyle, setPointStyle] = useState<'circle' | 'square' | 'i-shape'>('square');
+  const [handleStyle, setHandleStyle] = useState<'circle' | 'square' | 'x-shape' | 'i-shape'>('circle');
   
   // Customization settings
   const [anchorSize, setAnchorSize] = useState(3);
@@ -535,7 +533,7 @@ export default function App({ user }: { user?: User }) {
   
   const [isAnimating, setIsAnimating] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [activePoint, setActivePoint] = useState<{ sIdx: number; pIdx: number; startPos?: { x: number, y: number } } | null>(null);
+  const [activePoint, setActivePoint] = useState<{ sIdx: number; pIdx: number; startPos?: { x: number, y: number }, isSmooth?: boolean } | null>(null);
   const [selectedAnchors, setSelectedAnchors] = useState<number[]>([]);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
@@ -1303,6 +1301,77 @@ export default function App({ user }: { user?: User }) {
             // Just move the specific handle to the precise cursor position
             currentSeg[activePoint.pIdx] = newX;
             currentSeg[activePoint.pIdx + 1] = newY;
+
+            if (!isAltPressed && activePoint.isSmooth) {
+               if (activePoint.pIdx === 1) { // Outgoing handle (belongs to prev anchor)
+                  const prevSeg = next[activePoint.sIdx - 1];
+                  if (prevSeg) {
+                     const anchorX = prevSeg[prevSeg.length - 2] as number;
+                     const anchorY = prevSeg[prevSeg.length - 1] as number;
+                     const dx = newX - anchorX;
+                     const dy = newY - anchorY;
+                     const angleC = Math.atan2(dy, dx);
+                     const oppAngle = angleC + Math.PI;
+                     
+                     if (prevSeg[0] === 'C') {
+                        const oppDX = (prevSeg[3] as number) - anchorX;
+                        const oppDY = (prevSeg[4] as number) - anchorY;
+                        const oppLen = Math.sqrt(oppDX*oppDX + oppDY*oppDY);
+                        if (oppLen > 0.01) {
+                           prevSeg[3] = anchorX + Math.cos(oppAngle) * oppLen;
+                           prevSeg[4] = anchorY + Math.sin(oppAngle) * oppLen;
+                        }
+                     } else if (activePoint.sIdx === 1 && prevSeg[0] === 'M') {
+                        const lastSeg = next[next.length - 1];
+                        if (lastSeg && lastSeg[0] === 'Z') {
+                           const closeC = next[next.length - 2];
+                           if (closeC && closeC[0] === 'C' && Math.hypot((closeC[5] as number) - anchorX, (closeC[6] as number) - anchorY) < 0.1) {
+                              const oppDX = (closeC[3] as number) - anchorX;
+                              const oppDY = (closeC[4] as number) - anchorY;
+                              const oppLen = Math.sqrt(oppDX*oppDX + oppDY*oppDY);
+                              if (oppLen > 0.01) {
+                                 closeC[3] = anchorX + Math.cos(oppAngle) * oppLen;
+                                 closeC[4] = anchorY + Math.sin(oppAngle) * oppLen;
+                              }
+                           }
+                        }
+                     }
+                  }
+               } else if (activePoint.pIdx === 3) { // Incoming handle (belongs to current anchor)
+                  const anchorX = currentSeg[5] as number;
+                  const anchorY = currentSeg[6] as number;
+                  const dx = newX - anchorX;
+                  const dy = newY - anchorY;
+                  const angleC = Math.atan2(dy, dx);
+                  const oppAngle = angleC + Math.PI;
+
+                  const nSeg = next[activePoint.sIdx + 1];
+                  if (nSeg && nSeg[0] === 'Z') {
+                     const nextOfM = next[1];
+                     if (next[0] && next[0][0] === 'M' && nextOfM && nextOfM[0] === 'C') {
+                        const startX = next[0][1] as number;
+                        const startY = next[0][2] as number;
+                        if (Math.hypot(anchorX - startX, anchorY - startY) < 0.1) {
+                           const oppDX = (nextOfM[1] as number) - anchorX;
+                           const oppDY = (nextOfM[2] as number) - anchorY;
+                           const oppLen = Math.sqrt(oppDX*oppDX + oppDY*oppDY);
+                           if (oppLen > 0.01) {
+                              nextOfM[1] = anchorX + Math.cos(oppAngle) * oppLen;
+                              nextOfM[2] = anchorY + Math.sin(oppAngle) * oppLen;
+                           }
+                        }
+                     }
+                  } else if (nSeg && nSeg[0] === 'C') {
+                     const oppDX = (nSeg[1] as number) - anchorX;
+                     const oppDY = (nSeg[2] as number) - anchorY;
+                     const oppLen = Math.sqrt(oppDX*oppDX + oppDY*oppDY);
+                     if (oppLen > 0.01) {
+                        nSeg[1] = anchorX + Math.cos(oppAngle) * oppLen;
+                        nSeg[2] = anchorY + Math.sin(oppAngle) * oppLen;
+                     }
+                  }
+               }
+            }
           }
 
           return next;
@@ -1773,12 +1842,16 @@ export default function App({ user }: { user?: User }) {
             const type = seg[0];
             if (type === 'C') {
               const prevSeg = frameSegments[sIdx - 1];
-              const startX = prevSeg?.[prevSeg.length - 2] ?? 0;
-              const startY = prevSeg?.[prevSeg.length - 1] ?? 0;
-              ctx.moveTo(startX, startY);
-              ctx.lineTo(seg[1], seg[2]);
-              ctx.moveTo(seg[5], seg[6]);
-              ctx.lineTo(seg[3], seg[4]);
+              const startX = prevSeg?.[prevSeg.length - 2] as number ?? 0;
+              const startY = prevSeg?.[prevSeg.length - 1] as number ?? 0;
+              if (Math.hypot((seg[1] as number) - startX, (seg[2] as number) - startY) >= 0.1) {
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(seg[1] as number, seg[2] as number);
+              }
+              if (Math.hypot((seg[3] as number) - (seg[5] as number), (seg[4] as number) - (seg[6] as number)) >= 0.1) {
+                ctx.moveTo(seg[5] as number, seg[6] as number);
+                ctx.lineTo(seg[3] as number, seg[4] as number);
+              }
             }
           });
           ctx.stroke();
@@ -1788,10 +1861,13 @@ export default function App({ user }: { user?: User }) {
           ctx.lineCap = 'butt'; // Reset linecap precisely for UI components to match SVG defaults
           ctx.lineJoin = 'miter';
 
+          let prevPoint = { x: 0, y: 0 };
           frameSegments.forEach((seg) => {
              const type = seg[0];
              if (type === 'C') {
-               [ {x: seg[1] as number, y: seg[2] as number}, {x: seg[3] as number, y: seg[4] as number} ].forEach(pt => {
+               const pts = [ {x: seg[1] as number, y: seg[2] as number, anchor: prevPoint}, {x: seg[3] as number, y: seg[4] as number, anchor: {x: seg[5] as number, y: seg[6] as number}} ];
+               pts.forEach(pt => {
+                 if (Math.hypot(pt.x - pt.anchor.x, pt.y - pt.anchor.y) < 0.1) return;
                  ctx.fillStyle = handleColor;
                  ctx.strokeStyle = handleLineColor;
                  ctx.lineWidth = handleLineWidth;
@@ -1803,20 +1879,38 @@ export default function App({ user }: { user?: User }) {
                    ctx.rect(pt.x - hSize, pt.y - hSize, hSize * 2, hSize * 2);
                    ctx.fill(); ctx.stroke();
                  } else if (handleStyle === 'x-shape') {
+                   const angle = Math.atan2(pt.y - pt.anchor.y, pt.x - pt.anchor.x);
+                   ctx.save();
+                   ctx.translate(pt.x, pt.y);
+                   ctx.rotate(angle);
                    ctx.beginPath();
-                   ctx.moveTo(pt.x - hSize, pt.y - hSize);
-                   ctx.lineTo(pt.x + hSize, pt.y + hSize);
-                   ctx.moveTo(pt.x + hSize, pt.y - hSize);
-                   ctx.lineTo(pt.x - hSize, pt.y + hSize);
+                   ctx.moveTo(-hSize, -hSize);
+                   ctx.lineTo(hSize, hSize);
+                   ctx.moveTo(hSize, -hSize);
+                   ctx.lineTo(-hSize, hSize);
                    ctx.stroke();
+                   ctx.restore();
+                 } else if (handleStyle === 'i-shape') {
+                   const angle = Math.atan2(pt.y - pt.anchor.y, pt.x - pt.anchor.x);
+                   ctx.save();
+                   ctx.translate(pt.x, pt.y);
+                   ctx.rotate(angle);
+                   ctx.beginPath();
+                   ctx.moveTo(0, -hSize);
+                   ctx.lineTo(0, hSize);
+                   ctx.stroke();
+                   ctx.restore();
                  }
                });
+             }
+             if (seg.length >= 3) {
+                 prevPoint = { x: seg[seg.length - 2] as number, y: seg[seg.length - 1] as number };
              }
           });
 
           // Draw Anchors
           const aSize = anchorSize;
-          frameSegments.forEach((seg) => {
+          frameSegments.forEach((seg, sIdx) => {
             if (seg[0] === 'Z') return;
             const px = seg[seg.length - 2] as number;
             const py = seg[seg.length - 1] as number;
@@ -1828,12 +1922,92 @@ export default function App({ user }: { user?: User }) {
             
             if (pointStyle === 'circle') {
               ctx.arc(px, py, aSize, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            } else if (pointStyle === 'i-shape') {
+              let angle = 0;
+              let showI = true;
+              
+              let hasInHandle = false;
+              let vIn: [number, number] | null = null;
+              if (seg[0] === 'C') {
+                  const hx = seg[3] as number, hy = seg[4] as number;
+                  if (Math.hypot(hx - px, hy - py) > 0.05) { 
+                      vIn = [hx - px, hy - py]; 
+                      hasInHandle = true; 
+                  }
+              }
+              if (!vIn) {
+                  let prevSeg = frameSegments[sIdx - 1];
+                  if (!prevSeg && sIdx === 0 && frameSegments[frameSegments.length - 1]?.[0] === 'Z') {
+                      prevSeg = frameSegments[frameSegments.length - 2];
+                  }
+                  if (prevSeg) {
+                      const ppx = prevSeg[prevSeg.length - 2] as number, ppy = prevSeg[prevSeg.length - 1] as number;
+                      if (Math.hypot(ppx - px, ppy - py) > 0.05) vIn = [ppx - px, ppy - py];
+                  }
+              }
+              
+              let hasOutHandle = false;
+              let vOut: [number, number] | null = null;
+              let nextSeg = frameSegments[sIdx + 1];
+              if (nextSeg && nextSeg[0] === 'Z') {
+                   nextSeg = frameSegments[1]; 
+              }
+              if (nextSeg && nextSeg[0] === 'C') {
+                  const hx = nextSeg[1] as number, hy = nextSeg[2] as number;
+                  if (Math.hypot(hx - px, hy - py) > 0.05) { 
+                      vOut = [hx - px, hy - py]; 
+                      hasOutHandle = true; 
+                  }
+              }
+              if (!vOut && nextSeg && (nextSeg[0] === 'M' || nextSeg[0] === 'L' || nextSeg[0] === 'C')) {
+                  const nx = nextSeg[nextSeg.length - 2] as number, ny = nextSeg[nextSeg.length - 1] as number;
+                  if (Math.hypot(nx - px, ny - py) > 0.05) vOut = [nx - px, ny - py];
+              }
+
+              if (!hasInHandle && !hasOutHandle) {
+                  showI = false;
+              } else {
+                  let uIn: [number, number] | null = null;
+                  if (vIn) {
+                       const len = Math.hypot(vIn[0], vIn[1]);
+                       uIn = [vIn[0]/len, vIn[1]/len];
+                  }
+                  let uOut: [number, number] | null = null;
+                  if (vOut) {
+                       const len = Math.hypot(vOut[0], vOut[1]);
+                       uOut = [vOut[0]/len, vOut[1]/len];
+                  }
+                  let dX = 0, dY = 0;
+                  if (uIn && uOut) {
+                      dX = uOut[0] - uIn[0];
+                      dY = uOut[1] - uIn[1];
+                      if (Math.hypot(dX, dY) < 0.001) {
+                           dX = -uIn[1]; dY = uIn[0];
+                      }
+                  } else if (uIn) {
+                      dX = -uIn[0]; dY = -uIn[1];
+                  } else if (uOut) {
+                      dX = uOut[0]; dY = uOut[1];
+                  }
+                  angle = Math.atan2(dY, dX);
+              }
+
+              if (showI) {
+                  ctx.save();
+                  ctx.translate(px, py);
+                  ctx.rotate(angle);
+                  ctx.moveTo(0, -aSize);
+                  ctx.lineTo(0, aSize);
+                  ctx.stroke();
+                  ctx.restore();
+              }
             } else {
               ctx.rect(px - aSize, py - aSize, aSize * 2, aSize * 2);
+              ctx.fill();
+              ctx.stroke();
             }
-            
-            ctx.fill();
-            ctx.stroke();
           });
         }
 
@@ -1893,7 +2067,7 @@ export default function App({ user }: { user?: User }) {
     const cursor = pt.matrixTransform(content.getScreenCTM()?.inverse());
 
     const seg = segments[sIdx];
-    const isAnchor = pIdx === 1 || pIdx === 5;
+    const isAnchor = (seg[0] === 'C' && pIdx === 5) || ((seg[0] === 'M' || seg[0] === 'L') && pIdx === 1);
     
     if (isAnchor) {
       const px = seg[pIdx] as number;
@@ -1926,6 +2100,83 @@ export default function App({ user }: { user?: User }) {
       if (!e.shiftKey) setSelectedAnchors([]);
     }
 
+    let isSmooth = false;
+    if (seg[0] === 'C' && (pIdx === 1 || pIdx === 3)) {
+      if (pIdx === 1) {
+        const prevSeg = segments[sIdx - 1];
+        if (prevSeg) {
+           let anchorX = prevSeg[prevSeg.length - 2] as number;
+           let anchorY = prevSeg[prevSeg.length - 1] as number;
+           let oppDX, oppDY;
+           if (prevSeg[0] === 'C') {
+              oppDX = (prevSeg[3] as number) - anchorX;
+              oppDY = (prevSeg[4] as number) - anchorY;
+           } else if (sIdx === 1 && prevSeg[0] === 'M') {
+              const lastSeg = segments[segments.length - 1];
+              if (lastSeg && lastSeg[0] === 'Z') {
+                 const closeC = segments[segments.length - 2];
+                 if (closeC && closeC[0] === 'C' && Math.hypot((closeC[5] as number) - anchorX, (closeC[6] as number) - anchorY) < 0.1) {
+                    oppDX = (closeC[3] as number) - anchorX;
+                    oppDY = (closeC[4] as number) - anchorY;
+                 }
+              }
+           }
+           if (oppDX !== undefined && oppDY !== undefined) {
+              const curDX = (seg[1] as number) - anchorX;
+              const curDY = (seg[2] as number) - anchorY;
+              const oppLen = Math.sqrt(oppDX*oppDX + oppDY*oppDY);
+              const curLen = Math.sqrt(curDX*curDX + curDY*curDY);
+              if (oppLen > 0.05 && curLen > 0.05) {
+                  const angleOpp = Math.atan2(oppDY, oppDX);
+                  const angleCur = Math.atan2(curDY, curDX);
+                  const diff = Math.abs(angleOpp - angleCur);
+                  const modDiff = Math.abs(diff - Math.PI) % (2 * Math.PI);
+                  // Strict 0.005 rad (~0.28 deg) tolerance for SVG exports
+                  if (modDiff < 0.005 || Math.abs(modDiff - 2 * Math.PI) < 0.005) {
+                     isSmooth = true;
+                  }
+              }
+           }
+        }
+      } else if (pIdx === 3) {
+         const anchorX = seg[5] as number;
+         const anchorY = seg[6] as number;
+         let oppDX, oppDY;
+         const nSeg = segments[sIdx + 1];
+         if (nSeg && nSeg[0] === 'Z') {
+             const nextOfM = segments[1];
+             if (segments[0] && segments[0][0] === 'M' && nextOfM && nextOfM[0] === 'C') {
+                const startX = segments[0][1] as number;
+                const startY = segments[0][2] as number;
+                if (Math.hypot(anchorX - startX, anchorY - startY) < 0.1) {
+                   oppDX = (nextOfM[1] as number) - anchorX;
+                   oppDY = (nextOfM[2] as number) - anchorY;
+                }
+             }
+         } else if (nSeg && nSeg[0] === 'C') {
+             oppDX = (nSeg[1] as number) - anchorX;
+             oppDY = (nSeg[2] as number) - anchorY;
+         }
+         
+         if (oppDX !== undefined && oppDY !== undefined) {
+             const curDX = (seg[3] as number) - anchorX;
+             const curDY = (seg[4] as number) - anchorY;
+             const oppLen = Math.sqrt(oppDX*oppDX + oppDY*oppDY);
+             const curLen = Math.sqrt(curDX*curDX + curDY*curDY);
+             if (oppLen > 0.05 && curLen > 0.05) {
+                 const angleOpp = Math.atan2(oppDY, oppDX);
+                 const angleCur = Math.atan2(curDY, curDX);
+                 const diff = Math.abs(angleOpp - angleCur);
+                 const modDiff = Math.abs(diff - Math.PI) % (2 * Math.PI);
+                 // Strict 0.005 rad (~0.28 deg) tolerance for SVG exports
+                 if (modDiff < 0.005 || Math.abs(modDiff - 2 * Math.PI) < 0.005) {
+                    isSmooth = true;
+                 }
+             }
+         }
+      }
+    }
+
     setDragOffset({
       x: cursor.x - (seg[pIdx] as number),
       y: cursor.y - (seg[pIdx + 1] as number)
@@ -1933,7 +2184,8 @@ export default function App({ user }: { user?: User }) {
 
     setActivePoint({
       sIdx, pIdx, 
-      startPos: { x: seg[pIdx] as number, y: seg[pIdx + 1] as number }
+      startPos: { x: seg[pIdx] as number, y: seg[pIdx + 1] as number },
+      isSmooth
     });
   };
 
@@ -2578,6 +2830,8 @@ export default function App({ user }: { user?: User }) {
                   const anchors: React.ReactNode[] = [];
 
                   const addHandlePoint = (x: number, y: number, pIdx: number, anchorX: number, anchorY: number, sIdx: number) => {
+                    if (Math.hypot(x - anchorX, y - anchorY) < 0.1) return;
+
                     handleLines.push(
                       <line 
                         key={`HL-${sIdx}-${pIdx}`} 
@@ -2595,8 +2849,8 @@ export default function App({ user }: { user?: User }) {
                       stroke: handleLineColor,
                       strokeWidth: handleLineWidth,
                       className: cn(
-                        "pointer-events-none transition-transform",
-                        !activePoint && !isAnimating && "duration-200"
+                        "pointer-events-none",
+                        !activePoint && !isAnimating && "transition-transform duration-200"
                       ),
                       style: { transformOrigin: 'center', transformBox: 'fill-box' } as React.CSSProperties,
                     };
@@ -2630,10 +2884,28 @@ export default function App({ user }: { user?: User }) {
                           />
                         )}
                         {handleStyle === 'x-shape' && (
-                          <g {...commonHandleProps} className={cn(commonHandleProps.className, "group-hover/handle:scale-125")}>
+                          <g 
+                            {...commonHandleProps} 
+                            className={cn(commonHandleProps.className, "group-hover/handle:scale-125")}
+                            style={{ ...commonHandleProps.style, transform: `rotate(${angleDeg}deg)` }}
+                          >
                             <line x1={x - handleSize} y1={y - handleSize} x2={x + handleSize} y2={y + handleSize} stroke={handleLineColor} strokeWidth={handleLineWidth} />
                             <line x1={x + handleSize} y1={y - handleSize} x2={x - handleSize} y2={y + handleSize} stroke={handleLineColor} strokeWidth={handleLineWidth} />
                           </g>
+                        )}
+                        {handleStyle === 'i-shape' && (
+                          <line 
+                            x1={x} 
+                            y1={y - handleSize} 
+                            x2={x} 
+                            y2={y + handleSize} 
+                            stroke={handleLineColor}
+                            strokeWidth={handleLineWidth}
+                            {...commonHandleProps} 
+                            fill="none"
+                            className={cn(commonHandleProps.className, "group-hover/handle:scale-150")}
+                            style={{ ...commonHandleProps.style, transform: `rotate(${angleDeg}deg)` }}
+                          />
                         )}
                       </g>
                     );
@@ -2641,13 +2913,93 @@ export default function App({ user }: { user?: User }) {
 
                   const addAnchorPoint = (x: number, y: number, pIdx: number, sIdx: number) => {
                     const isActive = (activePoint?.sIdx === sIdx && activePoint?.pIdx === pIdx) || liveSelectedAnchors.includes(sIdx);
+                    
+                    let angleDeg = 0;
+                    let showIShape = true;
+
+                    if (pointStyle === 'i-shape') {
+                        const seg = displayedSegments[sIdx];
+                        const nextSeg = displayedSegments[sIdx + 1];
+                        
+                        let hasInHandle = false;
+                        let vIn: [number, number] | null = null;
+                    
+                        if (seg && seg[0] === 'C') {
+                            const hx = seg[3] as number, hy = seg[4] as number;
+                            if (Math.hypot(hx - x, hy - y) > 0.05) { 
+                                vIn = [hx - x, hy - y]; 
+                                hasInHandle = true; 
+                            }
+                        }
+                        if (!vIn) {
+                            let prevSeg = displayedSegments[sIdx - 1];
+                            if (!prevSeg && sIdx === 0 && displayedSegments[displayedSegments.length - 1]?.[0] === 'Z') {
+                                prevSeg = displayedSegments[displayedSegments.length - 2];
+                            }
+                            if (prevSeg) {
+                                const px = prevSeg[prevSeg.length - 2] as number, py = prevSeg[prevSeg.length - 1] as number;
+                                if (Math.hypot(px - x, py - y) > 0.05) vIn = [px - x, py - y];
+                            }
+                        }
+                        
+                        let hasOutHandle = false;
+                        let vOut: [number, number] | null = null;
+                        let testNextSeg = nextSeg;
+                        if (testNextSeg && testNextSeg[0] === 'Z') {
+                             testNextSeg = displayedSegments[1]; 
+                        }
+                        if (testNextSeg && testNextSeg[0] === 'C') {
+                            const hx = testNextSeg[1] as number, hy = testNextSeg[2] as number;
+                            if (Math.hypot(hx - x, hy - y) > 0.05) { 
+                                vOut = [hx - x, hy - y]; 
+                                hasOutHandle = true; 
+                            }
+                        }
+                        if (!vOut && testNextSeg && (testNextSeg[0] === 'M' || testNextSeg[0] === 'L' || testNextSeg[0] === 'C')) {
+                            const nx = testNextSeg[testNextSeg.length - 2] as number, ny = testNextSeg[testNextSeg.length - 1] as number;
+                            if (Math.hypot(nx - x, ny - y) > 0.05) vOut = [nx - x, ny - y];
+                        }
+                        
+                        if (!hasInHandle && !hasOutHandle) {
+                            showIShape = false;
+                        } else {
+                            let uIn: [number, number] | null = null;
+                            if (vIn) {
+                                 const len = Math.hypot(vIn[0], vIn[1]);
+                                 uIn = [vIn[0]/len, vIn[1]/len];
+                            }
+                            let uOut: [number, number] | null = null;
+                            if (vOut) {
+                                 const len = Math.hypot(vOut[0], vOut[1]);
+                                 uOut = [vOut[0]/len, vOut[1]/len];
+                            }
+                    
+                            let dX = 0, dY = 0;
+                            if (uIn && uOut) {
+                                dX = uOut[0] - uIn[0];
+                                dY = uOut[1] - uIn[1];
+                                if (Math.hypot(dX, dY) < 0.001) {
+                                     dX = -uIn[1];
+                                     dY = uIn[0];
+                                }
+                            } else if (uIn) {
+                                dX = -uIn[0];
+                                dY = -uIn[1];
+                            } else if (uOut) {
+                                dX = uOut[0];
+                                dY = uOut[1];
+                            }
+                            angleDeg = (Math.atan2(dY, dX) * 180) / Math.PI;
+                        }
+                    }
+                    
                     const commonProps = {
                       className: cn(
                         "pointer-events-none shadow-md",
                         !activePoint && !isAnimating && "transition-all duration-200",
                         isActive ? "fill-accent stroke-accent scale-125" : ""
                       ),
-                      style: { transformOrigin: 'center', transformBox: 'fill-box' } as React.CSSProperties,
+                      style: { transformOrigin: 'center', transformBox: 'fill-box', ...(pointStyle === 'i-shape' ? { transform: `rotate(${angleDeg}deg)` } : {}) } as React.CSSProperties,
                       fill: isActive ? undefined : anchorColor,
                       fillOpacity: isActive ? undefined : anchorFillOpacity,
                       stroke: isActive ? undefined : anchorStrokeColor,
@@ -2666,6 +3018,18 @@ export default function App({ user }: { user?: User }) {
                         )}
                         {pointStyle === 'square' && <rect x={x - anchorSize} y={y - anchorSize} width={(anchorSize * 2)} height={(anchorSize * 2)} rx="0" {...commonProps} />}
                         {pointStyle === 'circle' && <circle cx={x} cy={y} r={anchorSize} {...commonProps} />}
+                        {pointStyle === 'i-shape' && showIShape && (
+                          <line 
+                            x1={x} 
+                            y1={y - anchorSize} 
+                            x2={x} 
+                            y2={y + anchorSize} 
+                            stroke={anchorStrokeColor}
+                            strokeWidth={handleLineWidth}
+                            {...commonProps} 
+                            fill="none" 
+                          />
+                        )}
                       </g>
                     );
                   };
@@ -2986,10 +3350,10 @@ export default function App({ user }: { user?: User }) {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium">Anchor Shape</span>
                   <div className="flex gap-2">
-                    {(['circle', 'square'] as const).map(style => (
+                    {(['circle', 'square', 'i-shape'] as const).map(style => (
                       <button
                         key={style}
-                        onClick={() => setPointStyle(style as any)}
+                        onClick={() => setPointStyle(style)}
                         className={cn(
                           "w-7 h-7 flex items-center justify-center rounded border transition-all duration-200 text-sm",
                           pointStyle === style 
@@ -2999,6 +3363,7 @@ export default function App({ user }: { user?: User }) {
                       >
                         {style === 'circle' && "○"}
                         {style === 'square' && "□"}
+                        {style === 'i-shape' && "I"}
                       </button>
                     ))}
                   </div>
@@ -3037,7 +3402,7 @@ export default function App({ user }: { user?: User }) {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium">Handle Shape</span>
                   <div className="flex gap-2">
-                    {(['circle', 'square', 'x-shape'] as const).map(style => (
+                    {(['circle', 'square', 'x-shape', 'i-shape'] as const).map(style => (
                       <button
                         key={style}
                         onClick={() => setHandleStyle(style)}
@@ -3051,6 +3416,7 @@ export default function App({ user }: { user?: User }) {
                         {style === 'circle' && "○"}
                         {style === 'square' && "□"}
                         {style === 'x-shape' && "╳"}
+                        {style === 'i-shape' && "I"}
                       </button>
                     ))}
                   </div>

@@ -17,7 +17,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
     setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'invitation_codes'));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
       
       const usersSnap = await getDocs(collection(db, 'users'));
       const usersData: Record<string, string> = {};

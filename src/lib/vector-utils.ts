@@ -150,14 +150,50 @@ export function scaleSegments(segments: PathSegment[], targetWidth: number): Pat
 }
 
 export function lerpSegments(segA: PathSegment[], segB: PathSegment[], t: number): PathSegment[] {
-  if (segA.length !== segB.length) return Math.round(t) === 0 ? segA : segB; // Fallback if structures differ
+  let safeA = segA;
+  let safeB = segB;
+
+  // If topologies drift despite best efforts, gracefully pad the missing segments 
+  // by duplicating the last visual point to avoid snapping breaks.
+  if (segA.length !== segB.length) {
+    if (segA.length < segB.length) {
+       safeA = [...segA];
+       const lastA = safeA[safeA.length - 1];
+       while (safeA.length < segB.length) {
+          const matchingB = segB[safeA.length];
+          // Duplicate last know coordinates but respect B's command type for smooth lerp
+          const padSeg = [matchingB[0]] as any[];
+          for (let k = 1; k < matchingB.length; k++) {
+             const val = k % 2 !== 0 
+                ? (lastA[lastA.length - 2] as number) 
+                : (lastA[lastA.length - 1] as number);
+             padSeg.push(val);
+          }
+          safeA.push(padSeg as PathSegment);
+       }
+    } else {
+       safeB = [...segB];
+       const lastB = safeB[safeB.length - 1];
+       while (safeB.length < segA.length) {
+          const matchingA = segA[safeB.length];
+          const padSeg = [matchingA[0]] as any[];
+          for (let k = 1; k < matchingA.length; k++) {
+             const val = k % 2 !== 0 
+                ? (lastB[lastB.length - 2] as number) 
+                : (lastB[lastB.length - 1] as number);
+             padSeg.push(val);
+          }
+          safeB.push(padSeg as PathSegment);
+       }
+    }
+  }
 
   let prevAx = 0, prevAy = 0;
   let prevBx = 0, prevBy = 0;
 
-  return segA.map((aOrig, i) => {
+  return safeA.map((aOrig, i) => {
     let a = aOrig;
-    let bOrig = segB[i];
+    let bOrig = safeB[i];
     let b = bOrig;
 
     if (a[0] === 'L' && b[0] === 'C') {
