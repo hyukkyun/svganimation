@@ -698,6 +698,7 @@ export default function App({ user }: { user?: User }) {
 
   // Viewport state
   const [zoom, setZoom] = useState(1);
+  const [isCanvasFixed, setIsCanvasFixed] = useState(true);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [tool, setTool] = useState<'select' | 'hand' | 'zoom'>('select');
   const [isDrawing, setIsDrawing] = useState(false);
@@ -2728,7 +2729,7 @@ export default function App({ user }: { user?: User }) {
             {/* Viewport CAMERA 16:9 Guide */}
             {exportFraming === 'viewport' && (
               <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center p-8">
-                <div className="w-full h-full flex items-center justify-center">
+                <div className={cn("w-full h-full flex items-center justify-center", isCanvasFixed && "max-w-[800px] max-h-[600px]")}>
                   <div id="camera-guide-box" className="w-full aspect-video border-[3px] border-dashed border-red-500/70 rounded flex items-start justify-start overflow-hidden relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]">
                     <div className="bg-red-500 text-white font-black text-[10px] px-2 py-0.5 rounded-br uppercase tracking-widest flex items-center gap-1.5 z-10 backdrop-blur shadow-sm">
                       <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
@@ -2745,6 +2746,7 @@ export default function App({ user }: { user?: User }) {
               xmlns="http://www.w3.org/2000/svg"
               className={cn(
                 "w-full h-full overflow-visible touch-none",
+                isCanvasFixed && "max-w-[800px] max-h-[600px]",
                 !activePoint && !isAnimating && "transition-transform duration-300",
                 tool === 'hand' && "cursor-grab",
                 tool === 'hand' && isPanning && "cursor-grabbing",
@@ -3205,6 +3207,22 @@ export default function App({ user }: { user?: User }) {
 
                 <ColorInput label="Canvas Color" value={canvasBg} onChange={setCanvasBg} />
                 
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-text uppercase tracking-widest">Fixed Size Canvas</span>
+                  <button 
+                    onClick={() => setIsCanvasFixed(!isCanvasFixed)}
+                    className={cn(
+                      "w-8 h-4 rounded-full transition-colors relative border border-border",
+                      isCanvasFixed ? "bg-accent border-accent" : "bg-panel"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-3 h-3 bg-white rounded-full absolute top-[1px] transition-transform",
+                      isCanvasFixed ? "left-[17px]" : "left-[1px]"
+                    )} style={{ boxShadow: !isCanvasFixed ? '0 1px 2px rgba(255,255,255,0.2)' : 'none' }} />
+                  </button>
+                </div>
+
                 <PathWidthModifier segments={segments} onApply={handleScalePath} />
               </div>
 
