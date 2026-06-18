@@ -2378,13 +2378,6 @@ export default function App({ user }: { user?: User }) {
     bindRef.current.addKeyframe = addKeyframe;
   }, [addKeyframe]);
 
-  const updateKeyframe = (idx: number) => {
-    const newKeyframes = [...keyframes];
-    newKeyframes[idx] = JSON.parse(JSON.stringify(segments));
-    setKeyframes(newKeyframes);
-    pushHistory({ keyframes: newKeyframes, keyframeTimes, activeKeyIdx });
-  };
-
   const removeKeyframe = (idx: number) => {
     if (keyframes.length <= 1) return;
     const newKeyframes = keyframes.filter((_, i) => i !== idx);
@@ -2735,7 +2728,7 @@ export default function App({ user }: { user?: User }) {
             {/* Viewport CAMERA 16:9 Guide */}
             {exportFraming === 'viewport' && (
               <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center p-8">
-                <div className="w-full h-full max-w-[800px] max-h-[600px] flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center">
                   <div id="camera-guide-box" className="w-full aspect-video border-[3px] border-dashed border-red-500/70 rounded flex items-start justify-start overflow-hidden relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]">
                     <div className="bg-red-500 text-white font-black text-[10px] px-2 py-0.5 rounded-br uppercase tracking-widest flex items-center gap-1.5 z-10 backdrop-blur shadow-sm">
                       <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
@@ -2751,7 +2744,7 @@ export default function App({ user }: { user?: User }) {
               viewBox="0 0 300 300" 
               xmlns="http://www.w3.org/2000/svg"
               className={cn(
-                "w-full h-full max-w-[800px] max-h-[600px] overflow-visible touch-none",
+                "w-full h-full overflow-visible touch-none",
                 !activePoint && !isAnimating && "transition-transform duration-300",
                 tool === 'hand' && "cursor-grab",
                 tool === 'hand' && isPanning && "cursor-grabbing",
@@ -3764,12 +3757,6 @@ export default function App({ user }: { user?: User }) {
         <div className="flex justify-between text-[10px] text-text-dim px-2 tracking-tight">
           <div className="flex gap-4">
             <span>{isAnimating ? `Animating ${keyframes.length} steps...` : `${keyframes.length} keyframes defined.`}</span>
-            <button 
-              onClick={() => updateKeyframe(activeKeyIdx)}
-              className="text-accent underline underline-offset-2 hover:text-accent/80 font-bold uppercase transition-colors"
-            >
-              Update Selected Step
-            </button>
           </div>
           <span className="font-mono uppercase">DURATION: {animDuration.toFixed(1)}s • EASE: {animEasing} • {keyframes.length - 1} TRANSITIONS</span>
         </div>
