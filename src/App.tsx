@@ -545,6 +545,7 @@ export default function App({ user }: { user?: User }) {
   const [animProgress, setAnimProgress] = useState(0);
   
   const [exportRes, setExportRes] = useState<'720p' | '1080p' | '2k' | '4k'>('1080p');
+  const [exportRatio, setExportRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [exportFraming, setExportFraming] = useState<'auto' | 'viewport'>('auto');
 
   // Presets state
@@ -1617,8 +1618,19 @@ export default function App({ user }: { user?: User }) {
       '4k': { w: 3840, h: 2160 }
     };
     
-    const targetW = resMap[exportRes].w;
-    const targetH = resMap[exportRes].h;
+    const baseW = resMap[exportRes].w;
+    const baseH = resMap[exportRes].h;
+
+    let targetW = baseW;
+    let targetH = baseH;
+
+    if (exportRatio === '9:16') {
+      targetW = baseH;
+      targetH = baseW;
+    } else if (exportRatio === '1:1') {
+      targetW = baseH;
+      targetH = baseH;
+    }
 
     let finalScale = 1;
     let finalOffsetX = 0;
@@ -1728,8 +1740,9 @@ export default function App({ user }: { user?: User }) {
     let videoEncoder: VideoEncoder;
 
     try {
-      const is4k = targetW >= 3840;
-      const is2k = targetW >= 2560;
+      const maxDim = Math.max(targetW, targetH);
+      const is4k = maxDim >= 3840;
+      const is2k = maxDim >= 2560 || (targetW >= 2160 && targetH >= 2160);
       const codecLevel = is4k ? 'avc1.64003E' : (is2k ? 'avc1.640034' : 'avc1.640028');
 
       const config: VideoEncoderConfig = {
@@ -2534,6 +2547,17 @@ export default function App({ user }: { user?: User }) {
           </select>
 
           <select 
+            value={exportRatio} 
+            onChange={(e) => setExportRatio(e.target.value as any)}
+            className="bg-bg border border-border text-xs px-2 py-1.5 rounded focus:outline-none focus:border-accent text-text-dim hover:text-text transition-colors cursor-pointer"
+            title="Video Aspect Ratio"
+          >
+            <option value="16:9">16:9 (Landscape)</option>
+            <option value="9:16">9:16 (Portrait)</option>
+            <option value="1:1">1:1 (Square)</option>
+          </select>
+
+          <select 
             value={exportRes} 
             onChange={(e) => setExportRes(e.target.value as any)}
             className="bg-bg border border-border text-xs px-2 py-1.5 rounded focus:outline-none focus:border-accent text-text-dim hover:text-text transition-colors cursor-pointer"
@@ -2726,14 +2750,18 @@ export default function App({ user }: { user?: User }) {
              className="w-full h-full flex items-center justify-center p-8 relative"
            >
             
-            {/* Viewport CAMERA 16:9 Guide */}
+            {/* Viewport CAMERA Guide */}
             {exportFraming === 'viewport' && (
-              <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center p-8">
+               <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center p-8">
                 <div className={cn("w-full h-full flex items-center justify-center", isCanvasFixed && "max-w-[800px] max-h-[600px]")}>
-                  <div id="camera-guide-box" className="w-full aspect-video border-[3px] border-dashed border-red-500/70 rounded flex items-start justify-start overflow-hidden relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]">
+                  <div id="camera-guide-box" className={cn("w-full border-[3px] border-dashed border-red-500/70 rounded flex items-start justify-start overflow-hidden relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]", {
+                    '16:9': 'aspect-video',
+                    '9:16': 'aspect-[9/16] h-full w-auto max-w-full',
+                    '1:1': 'aspect-square h-full w-auto max-w-full'
+                  }[exportRatio])}>
                     <div className="bg-red-500 text-white font-black text-[10px] px-2 py-0.5 rounded-br uppercase tracking-widest flex items-center gap-1.5 z-10 backdrop-blur shadow-sm">
                       <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                      REC AREA (16:9)
+                      REC AREA ({exportRatio})
                     </div>
                   </div>
                 </div>
