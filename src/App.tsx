@@ -555,6 +555,58 @@ export default function App({ user }: { user?: User }) {
   const [presetError, setPresetError] = useState('');
   const [presetLoadError, setPresetLoadError] = useState('');
 
+  const BUILTIN_PRESETS = [
+    {
+      id: 'builtin-default',
+      name: '기본 프리셋',
+      createdAt: 0,
+      settings: initialSettings
+    },
+    {
+      id: 'builtin-preset-2',
+      name: '기본프리셋 2',
+      createdAt: 1,
+      settings: {
+        ...initialSettings,
+        canvasBg: '#36915b',
+        fill: '#932ece',
+        stroke: '#ffe600',
+        anchorStrokeColor: '#ffe600',
+        anchorColor: '#932ece',
+        handleColor: '#ffe600',
+        handleLineColor: '#ffe600',
+        anchorSize: 1.8,
+        handleLineWidth: 0.7,
+        strokeWidth: 0.7,
+        handleSize: 1.8,
+        handleStyle: 'x-shape'
+      }
+    },
+    {
+      id: 'builtin-preset-3',
+      name: '기본프리셋 3',
+      createdAt: 2,
+      settings: {
+        ...initialSettings,
+        canvasBg: '#fafafa',
+        fill: '#fafafa',
+        stroke: '#111111',
+        anchorStrokeColor: '#111111',
+        anchorColor: '#fafafa',
+        handleColor: '#111111',
+        handleLineColor: '#111111',
+        guideColor: '#111111',
+        anchorSize: 1.8,
+        handleLineWidth: 0.8,
+        strokeWidth: 0.8,
+        handleSize: 2.5,
+        pointStyle: 'i-shape',
+        handleStyle: 'i-shape',
+        guideThickness: 0.8
+      }
+    }
+  ];
+
   useEffect(() => {
     if (!user) return;
     const loadPresets = async () => {
@@ -3190,7 +3242,7 @@ export default function App({ user }: { user?: User }) {
                   </button>
                 )}
               </div>
-              {isSavingPreset && (
+              {isSavingPreset ? (
                 <div className="mb-4 bg-surface p-2 rounded border border-border flex flex-col gap-2">
                   <input 
                     type="text" 
@@ -3224,39 +3276,36 @@ export default function App({ user }: { user?: User }) {
                     </button>
                   </div>
                 </div>
-              )}
-              {!user ? (
-                <div className="text-xs text-text-dim text-center py-2 bg-background border border-border rounded opacity-70">
-                  <p>로그인하여 프리셋 저장</p>
-                </div>
-              ) : presetLoadError ? (
-                <div className="text-xs text-red-400 text-center py-2 bg-background border border-border rounded opacity-70">
-                  <p>로드 실패: {presetLoadError}</p>
-                </div>
-              ) : isPresetsLoading ? (
-                <div className="flex justify-center py-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-text-dim" />
-                </div>
-              ) : presets.length === 0 ? (
-                <div className="text-xs text-text-dim text-center py-2 bg-background border border-border rounded opacity-70">
-                  <p>저장된 프리셋이 없습니다.</p>
-                </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {presets.map(p => (
+                  {presetLoadError && (
+                    <div className="text-xs text-red-400 text-center py-2 bg-background border border-border rounded opacity-70">
+                      <p>로드 실패: {presetLoadError}</p>
+                    </div>
+                  )}
+
+                  {!user && (
+                    <div className="text-xs text-text-dim text-center py-2 bg-background border border-border rounded opacity-70">
+                      <p>로그인하여 내 프리셋 저장</p>
+                    </div>
+                  )}
+
+                  {(isPresetsLoading ? BUILTIN_PRESETS : [...BUILTIN_PRESETS, ...presets]).map(p => (
                     <div 
                       key={p.id} 
                       onClick={() => applyPreset(p.settings)}
                       className="group flex flex-col p-2 bg-background border border-border rounded cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-text">{p.name}</span>
-                        <button 
-                          onClick={(e) => deletePreset(p.id, e)}
-                          className="text-text-dim hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <span className="text-xs font-bold text-text truncate pr-2 max-w-[140px]">{p.name} {p.id.startsWith('builtin-') && <span className="text-[10px] bg-border px-1 ml-1 rounded text-text-dim font-normal">공용</span>}</span>
+                        {!p.id.startsWith('builtin-') && (
+                          <button 
+                            onClick={(e) => deletePreset(p.id, e)}
+                            className="text-text-dim hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                       <div className="flex gap-1.5 flex-wrap">
                         {/* Preview dots for key colors */}
@@ -3267,7 +3316,9 @@ export default function App({ user }: { user?: User }) {
                       </div>
                     </div>
                   ))}
-                  <div className="text-[10px] text-text-dim text-right mt-1">{presets.length} / 10</div>
+                  {user && (
+                    <div className="text-[10px] text-text-dim text-right mt-1">{presets.length} / 10</div>
+                  )}
                 </div>
               )}
             </div>
@@ -3299,7 +3350,7 @@ export default function App({ user }: { user?: User }) {
                   </div>
                   <input 
                     type="range" 
-                    min="0.5" max="20" step="0.5"
+                    min="0.1" max="20" step="0.1"
                     value={strokeWidth}
                     onChange={(e) => setStrokeWidth(Number(e.target.value))}
                     className="w-full h-1 accent-accent rounded-full appearance-none bg-border mt-1 cursor-pointer"
@@ -3327,7 +3378,7 @@ export default function App({ user }: { user?: User }) {
                     <span>{anchorSize}px</span>
                   </div>
                   <input 
-                    type="range" min="1" max="12" step="0.5" 
+                    type="range" min="1" max="12" step="0.1" 
                     value={anchorSize}
                     onChange={(e) => setAnchorSize(Number(e.target.value))}
                     className="w-full h-1 accent-accent rounded-full appearance-none bg-border mt-1 cursor-pointer"
@@ -3379,7 +3430,7 @@ export default function App({ user }: { user?: User }) {
                     <span>{handleSize}px</span>
                   </div>
                   <input 
-                    type="range" min="1" max="10" step="0.5" 
+                    type="range" min="1" max="10" step="0.1" 
                     value={handleSize}
                     onChange={(e) => setHandleSize(Number(e.target.value))}
                     className="w-full h-1 accent-accent rounded-full appearance-none bg-border mt-1 cursor-pointer"
@@ -3432,7 +3483,7 @@ export default function App({ user }: { user?: User }) {
                     <span>{handleLineWidth}px</span>
                   </div>
                   <input 
-                    type="range" min="0" max="5" step="0.5" 
+                    type="range" min="0" max="5" step="0.1" 
                     value={handleLineWidth}
                     onChange={(e) => setHandleLineWidth(Number(e.target.value))}
                     className="w-full h-1 accent-accent rounded-full appearance-none bg-border mt-1 cursor-pointer"
@@ -3469,7 +3520,7 @@ export default function App({ user }: { user?: User }) {
                     <span>{guideThickness}px</span>
                   </div>
                   <input 
-                    type="range" min="0.5" max="5" step="0.5" 
+                    type="range" min="0.1" max="5" step="0.1" 
                     value={guideThickness}
                     onChange={(e) => setGuideThickness(Number(e.target.value))}
                     className="w-full h-1 accent-accent rounded-full appearance-none bg-border mt-1 cursor-pointer"
