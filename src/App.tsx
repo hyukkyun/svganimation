@@ -2933,6 +2933,8 @@ export default function App({ user }: { user?: User }) {
                     // Calculate rotation for I-shape (perpendicular to handle line)
                     const angle = Math.atan2(y - anchorY, x - anchorX);
                     const angleDeg = (angle * 180) / Math.PI;
+                    const hDx = handleSize * Math.cos(angle + Math.PI / 2);
+                    const hDy = handleSize * Math.sin(angle + Math.PI / 2);
 
                     handles.push(
                       <g key={`H-${sIdx}-${pIdx}`} className="group/handle">
@@ -2970,16 +2972,15 @@ export default function App({ user }: { user?: User }) {
                         )}
                         {handleStyle === 'i-shape' && (
                           <line 
-                            x1={x} 
-                            y1={y - handleSize} 
-                            x2={x} 
-                            y2={y + handleSize} 
+                            x1={x - hDx} 
+                            y1={y - hDy} 
+                            x2={x + hDx} 
+                            y2={y + hDy} 
                             stroke={handleLineColor}
                             strokeWidth={handleLineWidth}
                             {...commonHandleProps} 
                             fill="none"
-                            className={cn(commonHandleProps.className, "group-hover/handle:scale-150")}
-                            style={{ ...commonHandleProps.style, transform: `rotate(${angleDeg}deg)` }}
+                            className={cn(commonHandleProps.className, "group-hover/handle:scale-[1.5]")}
                           />
                         )}
                       </g>
@@ -3074,12 +3075,15 @@ export default function App({ user }: { user?: User }) {
                         !activePoint && !isAnimating && "transition-all duration-200",
                         isActive ? "fill-accent stroke-accent scale-125" : ""
                       ),
-                      style: { transformOrigin: `${x}px ${y}px`, ...(pointStyle === 'i-shape' ? { transform: `rotate(${angleDeg}deg)` } : {}) } as React.CSSProperties,
+                      style: { transformOrigin: `${x}px ${y}px` } as React.CSSProperties,
                       fill: isActive ? undefined : anchorColor,
                       fillOpacity: isActive ? undefined : anchorFillOpacity,
                       stroke: isActive ? undefined : anchorStrokeColor,
                       strokeWidth: handleLineWidth
                     };
+                    
+                    const aDx = anchorSize * Math.cos((angleDeg * Math.PI / 180) + Math.PI / 2);
+                    const aDy = anchorSize * Math.sin((angleDeg * Math.PI / 180) + Math.PI / 2);
 
                     anchors.push(
                       <g key={`A-${sIdx}-${pIdx}`} className="group/anchor">
@@ -3095,10 +3099,10 @@ export default function App({ user }: { user?: User }) {
                         {pointStyle === 'circle' && <circle cx={x} cy={y} r={anchorSize} {...commonProps} />}
                         {pointStyle === 'i-shape' && showIShape && (
                           <line 
-                            x1={x} 
-                            y1={y - anchorSize} 
-                            x2={x} 
-                            y2={y + anchorSize} 
+                            x1={x - aDx} 
+                            y1={y - aDy} 
+                            x2={x + aDx} 
+                            y2={y + aDy} 
                             stroke={anchorStrokeColor}
                             strokeWidth={handleLineWidth}
                             {...commonProps} 
