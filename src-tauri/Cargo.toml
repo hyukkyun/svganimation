@@ -1,11 +1,11 @@
 [package]
 name = "bezier-animator"
-version = "0.1.7"
+version = "0.1.8"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
 repository = ""
-default-run = "app"
+default-run = "bezier-animator"
 edition = "2021"
 rust-version = "1.60"
 
