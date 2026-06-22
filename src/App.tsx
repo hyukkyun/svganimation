@@ -542,6 +542,7 @@ export default function App({ user }: { user?: User }) {
   const [animEasing, setAnimEasing] = useState('easeInOut');
   const [easingMode, setEasingMode] = useState<'global'|'local'>('local');
   const [showControlsDuringAnim, setShowControlsDuringAnim] = useState(true);
+  const [showHandles, setShowHandles] = useState(true);
   const [animProgress, setAnimProgress] = useState(0);
   
   const [exportRes, setExportRes] = useState<'720p' | '1080p' | '2k' | '4k'>('1080p');
@@ -1900,79 +1901,81 @@ export default function App({ user }: { user?: User }) {
         ctx.stroke();
 
         if (showControlsDuringAnim) {
-          // Draw Handle Lines
-          ctx.lineWidth = handleLineWidth;
-          ctx.strokeStyle = handleLineColor;
-          ctx.beginPath();
-          frameSegments.forEach((seg, sIdx) => {
-            const type = seg[0];
-            if (type === 'C') {
-              const prevSeg = frameSegments[sIdx - 1];
-              const startX = prevSeg?.[prevSeg.length - 2] as number ?? 0;
-              const startY = prevSeg?.[prevSeg.length - 1] as number ?? 0;
-              if (Math.hypot((seg[1] as number) - startX, (seg[2] as number) - startY) >= 0.1) {
-                ctx.moveTo(startX, startY);
-                ctx.lineTo(seg[1] as number, seg[2] as number);
+          if (showHandles) {
+            // Draw Handle Lines
+            ctx.lineWidth = handleLineWidth;
+            ctx.strokeStyle = handleLineColor;
+            ctx.beginPath();
+            frameSegments.forEach((seg, sIdx) => {
+              const type = seg[0];
+              if (type === 'C') {
+                const prevSeg = frameSegments[sIdx - 1];
+                const startX = prevSeg?.[prevSeg.length - 2] as number ?? 0;
+                const startY = prevSeg?.[prevSeg.length - 1] as number ?? 0;
+                if (Math.hypot((seg[1] as number) - startX, (seg[2] as number) - startY) >= 0.1) {
+                  ctx.moveTo(startX, startY);
+                  ctx.lineTo(seg[1] as number, seg[2] as number);
+                }
+                if (Math.hypot((seg[3] as number) - (seg[5] as number), (seg[4] as number) - (seg[6] as number)) >= 0.1) {
+                  ctx.moveTo(seg[5] as number, seg[6] as number);
+                  ctx.lineTo(seg[3] as number, seg[4] as number);
+                }
               }
-              if (Math.hypot((seg[3] as number) - (seg[5] as number), (seg[4] as number) - (seg[6] as number)) >= 0.1) {
-                ctx.moveTo(seg[5] as number, seg[6] as number);
-                ctx.lineTo(seg[3] as number, seg[4] as number);
-              }
-            }
-          });
-          ctx.stroke();
+            });
+            ctx.stroke();
 
-          // Draw Handle Points
-          const hSize = handleSize;
-          ctx.lineCap = 'butt'; // Reset linecap precisely for UI components to match SVG defaults
-          ctx.lineJoin = 'miter';
+            // Draw Handle Points
+            const hSize = handleSize;
+            ctx.lineCap = 'butt'; // Reset linecap precisely for UI components to match SVG defaults
+            ctx.lineJoin = 'miter';
 
-          let prevPoint = { x: 0, y: 0 };
-          frameSegments.forEach((seg) => {
-             const type = seg[0];
-             if (type === 'C') {
-               const pts = [ {x: seg[1] as number, y: seg[2] as number, anchor: prevPoint}, {x: seg[3] as number, y: seg[4] as number, anchor: {x: seg[5] as number, y: seg[6] as number}} ];
-               pts.forEach(pt => {
-                 if (Math.hypot(pt.x - pt.anchor.x, pt.y - pt.anchor.y) < 0.1) return;
-                 ctx.fillStyle = handleColor;
-                 ctx.strokeStyle = handleLineColor;
-                 ctx.lineWidth = handleLineWidth;
-                 ctx.beginPath();
-                 if (handleStyle === 'circle') {
-                   ctx.arc(pt.x, pt.y, hSize, 0, Math.PI * 2);
-                   ctx.fill(); ctx.stroke();
-                 } else if (handleStyle === 'square') {
-                   ctx.rect(pt.x - hSize, pt.y - hSize, hSize * 2, hSize * 2);
-                   ctx.fill(); ctx.stroke();
-                 } else if (handleStyle === 'x-shape') {
-                   const angle = Math.atan2(pt.y - pt.anchor.y, pt.x - pt.anchor.x);
-                   ctx.save();
-                   ctx.translate(pt.x, pt.y);
-                   ctx.rotate(angle);
+            let prevPoint = { x: 0, y: 0 };
+            frameSegments.forEach((seg) => {
+               const type = seg[0];
+               if (type === 'C') {
+                 const pts = [ {x: seg[1] as number, y: seg[2] as number, anchor: prevPoint}, {x: seg[3] as number, y: seg[4] as number, anchor: {x: seg[5] as number, y: seg[6] as number}} ];
+                 pts.forEach(pt => {
+                   if (Math.hypot(pt.x - pt.anchor.x, pt.y - pt.anchor.y) < 0.1) return;
+                   ctx.fillStyle = handleColor;
+                   ctx.strokeStyle = handleLineColor;
+                   ctx.lineWidth = handleLineWidth;
                    ctx.beginPath();
-                   ctx.moveTo(-hSize, -hSize);
-                   ctx.lineTo(hSize, hSize);
-                   ctx.moveTo(hSize, -hSize);
-                   ctx.lineTo(-hSize, hSize);
-                   ctx.stroke();
-                   ctx.restore();
-                 } else if (handleStyle === 'i-shape') {
-                   const angle = Math.atan2(pt.y - pt.anchor.y, pt.x - pt.anchor.x);
-                   ctx.save();
-                   ctx.translate(pt.x, pt.y);
-                   ctx.rotate(angle);
-                   ctx.beginPath();
-                   ctx.moveTo(0, -hSize);
-                   ctx.lineTo(0, hSize);
-                   ctx.stroke();
-                   ctx.restore();
-                 }
-               });
-             }
-             if (seg.length >= 3) {
-                 prevPoint = { x: seg[seg.length - 2] as number, y: seg[seg.length - 1] as number };
-             }
-          });
+                   if (handleStyle === 'circle') {
+                     ctx.arc(pt.x, pt.y, hSize, 0, Math.PI * 2);
+                     ctx.fill(); ctx.stroke();
+                   } else if (handleStyle === 'square') {
+                     ctx.rect(pt.x - hSize, pt.y - hSize, hSize * 2, hSize * 2);
+                     ctx.fill(); ctx.stroke();
+                   } else if (handleStyle === 'x-shape') {
+                     const angle = Math.atan2(pt.y - pt.anchor.y, pt.x - pt.anchor.x);
+                     ctx.save();
+                     ctx.translate(pt.x, pt.y);
+                     ctx.rotate(angle);
+                     ctx.beginPath();
+                     ctx.moveTo(-hSize, -hSize);
+                     ctx.lineTo(hSize, hSize);
+                     ctx.moveTo(hSize, -hSize);
+                     ctx.lineTo(-hSize, hSize);
+                     ctx.stroke();
+                     ctx.restore();
+                   } else if (handleStyle === 'i-shape') {
+                     const angle = Math.atan2(pt.y - pt.anchor.y, pt.x - pt.anchor.x);
+                     ctx.save();
+                     ctx.translate(pt.x, pt.y);
+                     ctx.rotate(angle);
+                     ctx.beginPath();
+                     ctx.moveTo(0, -hSize);
+                     ctx.lineTo(0, hSize);
+                     ctx.stroke();
+                     ctx.restore();
+                   }
+                 });
+               }
+               if (seg.length >= 3) {
+                   prevPoint = { x: seg[seg.length - 2] as number, y: seg[seg.length - 1] as number };
+               }
+            });
+          }
 
           // Draw Anchors
           const aSize = anchorSize;
@@ -3141,8 +3144,10 @@ export default function App({ user }: { user?: User }) {
                       const prevSeg = displayedSegments[sIdx - 1];
                       const startX = prevSeg?.[prevSeg.length - 2] ?? 0;
                       const startY = prevSeg?.[prevSeg.length - 1] ?? 0;
-                      addHandlePoint(seg[1], seg[2], 1, startX, startY, sIdx);
-                      addHandlePoint(seg[3], seg[4], 3, seg[5], seg[6], sIdx);
+                      if (showHandles) {
+                        addHandlePoint(seg[1], seg[2], 1, startX, startY, sIdx);
+                        addHandlePoint(seg[3], seg[4], 3, seg[5], seg[6], sIdx);
+                      }
                       addAnchorPoint(seg[5], seg[6], 5, sIdx);
                     }
                   });
@@ -3699,7 +3704,11 @@ export default function App({ user }: { user?: User }) {
                 <label className="flex items-center justify-between cursor-pointer group">
                   <span className="text-xs font-medium">Show Points</span>
                   <div 
-                    onClick={() => setShowControlsDuringAnim(!showControlsDuringAnim)}
+                    onClick={() => {
+                      const next = !showControlsDuringAnim;
+                      setShowControlsDuringAnim(next);
+                      if (!next) setShowHandles(false);
+                    }}
                     className={cn(
                       "w-8 h-4 rounded-full relative transition-colors duration-200",
                       showControlsDuringAnim ? "bg-accent" : "bg-border"
@@ -3708,6 +3717,25 @@ export default function App({ user }: { user?: User }) {
                     <div className={cn(
                       "absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200",
                       showControlsDuringAnim ? "left-[18px]" : "left-0.5"
+                    )} />
+                  </div>
+                </label>
+
+                <label className={cn("flex items-center justify-between cursor-pointer group transition-opacity", !showControlsDuringAnim && "opacity-50 pointer-events-none")}>
+                  <span className="text-xs font-medium">Show Handles</span>
+                  <div 
+                    onClick={() => {
+                        if (!showControlsDuringAnim) return;
+                        setShowHandles(!showHandles);
+                    }}
+                    className={cn(
+                      "w-8 h-4 rounded-full relative transition-colors duration-200",
+                      showHandles ? "bg-accent" : "bg-border"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200",
+                      showHandles ? "left-[18px]" : "left-0.5"
                     )} />
                   </div>
                 </label>
