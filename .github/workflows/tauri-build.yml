@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest] # 맥(Mac)과 윈도우(Windows) 가상환경 두 곳에서 동시에 실행
+        platform: [macos-13, windows-latest] # 맥(Mac)과 윈도우(Windows) 가상환경 두 곳에서 동시에 실행
 
     runs-on: ${{ matrix.platform }}
     
@@ -30,6 +30,23 @@ jobs:
 
       - name: 4. 프로젝트 패키지 설치 (npm)
         run: npm install
+
+      - name: 4.5. Fix macOS corrupted icns file
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          mkdir -p icon.iconset
+          sips -z 16 16     icon.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32     icon.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32     icon.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64     icon.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128   icon.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256   icon.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256   icon.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512   icon.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512   icon.png --out icon.iconset/icon_512x512.png
+          sips -z 1024 1024 icon.png --out icon.iconset/icon_512x512@2x.png
+          iconutil -c icns icon.iconset -o src-tauri/icons/icon.icns
+          rm -R icon.iconset
 
       - name: 5. Tauri 로 자동 빌드 후 파일(dmg, msi) 추출
         uses: tauri-apps/tauri-action@v0
