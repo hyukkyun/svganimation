@@ -8,11 +8,19 @@
   },
   "package": {
     "productName": "BezierAnimator",
-    "version": "0.1.8"
+    "version": "0.1.9"
   },
   "tauri": {
     "allowlist": {
-      "all": false
+      "all": false,
+      "dialog": {
+        "all": true,
+        "save": true
+      },
+      "fs": {
+        "all": true,
+        "scope": ["**"]
+      }
     },
     "bundle": {
       "active": true,

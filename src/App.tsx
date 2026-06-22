@@ -2103,15 +2103,35 @@ export default function App({ user }: { user?: User }) {
       
       // @ts-ignore
       const buffer = muxer.target.buffer;
-      const blob = new Blob([buffer], { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `vector-animation-${Date.now()}-${exportRes}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      
+      const isTauri = typeof window !== 'undefined' && window.__TAURI_IPC__ !== undefined;
+      const defaultFilename = `vector-animation-${Date.now()}-${exportRes}.mp4`;
+      
+      if (isTauri) {
+        try {
+          const { save } = await import('@tauri-apps/api/dialog');
+          const { writeBinaryFile } = await import('@tauri-apps/api/fs');
+          const filePath = await save({
+            defaultPath: defaultFilename,
+            filters: [{ name: 'Video', extensions: ['mp4'] }]
+          });
+          if (filePath) {
+            await writeBinaryFile(filePath, new Uint8Array(buffer));
+          }
+        } catch (e) {
+          console.error("Failed to save via Tauri:", e);
+        }
+      } else {
+        const blob = new Blob([buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = defaultFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
       
       setIsRecording(false);
       setAnimProgress(0);
