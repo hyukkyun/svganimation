@@ -2927,7 +2927,7 @@ export default function App({ user }: { user?: User }) {
                         "pointer-events-none",
                         !activePoint && !isAnimating && "transition-transform duration-200"
                       ),
-                      style: { transformOrigin: 'center', transformBox: 'fill-box' } as React.CSSProperties,
+                      style: { transformOrigin: `${x}px ${y}px` } as React.CSSProperties,
                     };
 
                     // Calculate rotation for I-shape (perpendicular to handle line)
@@ -3074,7 +3074,7 @@ export default function App({ user }: { user?: User }) {
                         !activePoint && !isAnimating && "transition-all duration-200",
                         isActive ? "fill-accent stroke-accent scale-125" : ""
                       ),
-                      style: { transformOrigin: 'center', transformBox: 'fill-box', ...(pointStyle === 'i-shape' ? { transform: `rotate(${angleDeg}deg)` } : {}) } as React.CSSProperties,
+                      style: { transformOrigin: `${x}px ${y}px`, ...(pointStyle === 'i-shape' ? { transform: `rotate(${angleDeg}deg)` } : {}) } as React.CSSProperties,
                       fill: isActive ? undefined : anchorColor,
                       fillOpacity: isActive ? undefined : anchorFillOpacity,
                       stroke: isActive ? undefined : anchorStrokeColor,

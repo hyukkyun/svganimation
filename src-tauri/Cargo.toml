@@ -1,5 +1,5 @@
 [package]
-name = "app"
+name = "bezier-animator"
 version = "0.1.7"
 description = "A Tauri App"
 authors = ["you"]

@@ -7,7 +7,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "VectorApp",
+    "productName": "BezierAnimator",
     "version": "0.1.7"
   },
   "tauri": {
@@ -56,10 +56,10 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 600,
+        "height": 900,
         "resizable": true,
-        "title": "Vector App",
-        "width": 800
+        "title": "Bezier Animator",
+        "width": 1440
       }
     ]
   }
