@@ -27,7 +27,9 @@ import {
   Redo2,
   LogOut,
   UserCircle,
-  ShieldAlert
+  ShieldAlert,
+  Save,
+  FolderOpen
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { parsePath, stringifyPath, lerpSegments, fitSegmentsToCanvas, getBoundingBox, scaleSegments, PathState, PathSegment } from './lib/vector-utils';
@@ -768,6 +770,7 @@ export default function App({ user }: { user?: User }) {
   }, [cornerDrag, segments.length, selectedAnchors]);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const segmentsRef = useRef<PathSegment[]>(segments);
   const keyframesRef = useRef<PathSegment[][]>(keyframes);
   
@@ -2497,17 +2500,174 @@ export default function App({ user }: { user?: User }) {
     setIsDraggingFile(false);
   };
 
+  const handleExportProject = () => {
+    const projectData = {
+      type: "bzrani-project",
+      version: "1.0",
+      timestamp: Date.now(),
+      keyframes,
+      keyframeTimes,
+      activeKeyIdx,
+      segments,
+      initialImportedPath,
+      styles: {
+        stroke,
+        strokeWidth,
+        fill,
+        fillOpacity,
+        canvasBg,
+      },
+      viewerSettings: {
+        pointStyle,
+        handleStyle,
+        anchorSize,
+        anchorColor,
+        anchorStrokeColor,
+        anchorFillOpacity,
+        handleSize,
+        handleColor,
+        handleFillOpacity,
+        handleLineColor,
+        handleLineWidth,
+        showControlsDuringAnim,
+        showHandles,
+      },
+      animSettings: {
+        animDuration,
+        animEasing,
+        easingMode,
+      },
+      guideSettings: {
+        guides,
+        snapToGuides,
+      },
+      exportSettings: {
+        exportRes,
+        exportRatio,
+        exportFraming,
+      }
+    };
+
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `project-${Date.now()}.bzrani`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const processProjectFileContent = (content: string) => {
+    try {
+      const data = JSON.parse(content);
+      if (data.type !== "bzrani-project" && data.type !== "svganim-project") {
+        alert("올바르지 않은 프로젝트 파일 형식입니다.");
+        return;
+      }
+
+      if (!data.keyframes || !data.keyframeTimes) {
+        alert("프로젝트 파일에 키프레임 정보가 누락되었습니다.");
+        return;
+      }
+
+      // Restore states
+      setKeyframes(data.keyframes);
+      setKeyframeTimes(data.keyframeTimes);
+      if (typeof data.activeKeyIdx === 'number') {
+        setActiveKeyIdx(data.activeKeyIdx);
+      }
+      if (data.segments) {
+        setSegments(data.segments);
+      } else if (data.keyframes[data.activeKeyIdx ?? 0]) {
+        setSegments(data.keyframes[data.activeKeyIdx ?? 0]);
+      }
+      if (data.initialImportedPath) {
+        setInitialImportedPath(data.initialImportedPath);
+      }
+
+      // Styles
+      if (data.styles) {
+        if (data.styles.stroke !== undefined) setStroke(data.styles.stroke);
+        if (data.styles.strokeWidth !== undefined) setStrokeWidth(data.styles.strokeWidth);
+        if (data.styles.fill !== undefined) setFill(data.styles.fill);
+        if (data.styles.fillOpacity !== undefined) setFillOpacity(data.styles.fillOpacity);
+        if (data.styles.canvasBg !== undefined) setCanvasBg(data.styles.canvasBg);
+      }
+
+      // Viewer options
+      if (data.viewerSettings) {
+        if (data.viewerSettings.pointStyle !== undefined) setPointStyle(data.viewerSettings.pointStyle);
+        if (data.viewerSettings.handleStyle !== undefined) setHandleStyle(data.viewerSettings.handleStyle);
+        if (data.viewerSettings.anchorSize !== undefined) setAnchorSize(data.viewerSettings.anchorSize);
+        if (data.viewerSettings.anchorColor !== undefined) setAnchorColor(data.viewerSettings.anchorColor);
+        if (data.viewerSettings.anchorStrokeColor !== undefined) setAnchorStrokeColor(data.viewerSettings.anchorStrokeColor);
+        if (data.viewerSettings.anchorFillOpacity !== undefined) setAnchorFillOpacity(data.viewerSettings.anchorFillOpacity);
+        if (data.viewerSettings.handleSize !== undefined) setHandleSize(data.viewerSettings.handleSize);
+        if (data.viewerSettings.handleColor !== undefined) setHandleColor(data.viewerSettings.handleColor);
+        if (data.viewerSettings.handleFillOpacity !== undefined) setHandleFillOpacity(data.viewerSettings.handleFillOpacity);
+        if (data.viewerSettings.handleLineColor !== undefined) setHandleLineColor(data.viewerSettings.handleLineColor);
+        if (data.viewerSettings.handleLineWidth !== undefined) setHandleLineWidth(data.viewerSettings.handleLineWidth);
+        if (data.viewerSettings.showControlsDuringAnim !== undefined) setShowControlsDuringAnim(data.viewerSettings.showControlsDuringAnim);
+        if (data.viewerSettings.showHandles !== undefined) setShowHandles(data.viewerSettings.showHandles);
+      }
+
+      // Animation options
+      if (data.animSettings) {
+        if (data.animSettings.animDuration !== undefined) setAnimDuration(data.animSettings.animDuration);
+        if (data.animSettings.animEasing !== undefined) setAnimEasing(data.animSettings.animEasing);
+        if (data.animSettings.easingMode !== undefined) setEasingMode(data.animSettings.easingMode);
+      }
+
+      // Guide options
+      if (data.guideSettings) {
+        if (data.guideSettings.guides !== undefined) setGuides(data.guideSettings.guides);
+        if (data.guideSettings.snapToGuides !== undefined) setSnapToGuides(data.guideSettings.snapToGuides);
+      }
+
+      // Export options
+      if (data.exportSettings) {
+        if (data.exportSettings.exportRes !== undefined) setExportRes(data.exportSettings.exportRes);
+        if (data.exportSettings.exportRatio !== undefined) setExportRatio(data.exportSettings.exportRatio);
+        if (data.exportSettings.exportFraming !== undefined) setExportFraming(data.exportSettings.exportFraming);
+      }
+
+      // History reset for seamless transition
+      setHistory([{
+        keyframes: data.keyframes,
+        keyframeTimes: data.keyframeTimes,
+        activeKeyIdx: data.activeKeyIdx ?? 0
+      }]);
+      setHistoryPtr(0);
+
+      alert("프로젝트 파일을 성공적으로 불러왔습니다!");
+    } catch (err) {
+      console.error(err);
+      alert("프로젝트 파일을 분석하는 도중에 오류가 생겼습니다.");
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingFile(false);
     const file = e.dataTransfer.files[0];
-    if (file && file.type === 'image/svg+xml') {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        processUploadedSvgContent(content);
-      };
-      reader.readAsText(file);
+    if (file) {
+      if (file.type === 'image/svg+xml') {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const content = event.target?.result as string;
+          processUploadedSvgContent(content);
+        };
+        reader.readAsText(file);
+      } else if (file.name.endsWith('.bzrani') || file.name.endsWith('.svganim') || file.type === 'application/json' || file.name.endsWith('.json')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const content = event.target?.result as string;
+          processProjectFileContent(content);
+        };
+        reader.readAsText(file);
+      }
     }
   };
 
@@ -2544,6 +2704,43 @@ export default function App({ user }: { user?: User }) {
             >
               <Redo2 className="w-4 h-4" />
             </button>
+          </div>
+          <div className="w-[1px] h-4 bg-border mx-1" />
+          <div className="flex items-center gap-1 text-xs">
+            <button
+              onClick={handleExportProject}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-border text-text-dim hover:text-accent font-medium transition-all"
+              title="Save Project File (.bzrani)"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Project</span>
+            </button>
+            <button
+              onClick={() => projectInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded hover:bg-border text-text-dim hover:text-text font-medium transition-all"
+              title="Load Project File (.bzrani)"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span>Load Project</span>
+            </button>
+            <input 
+              type="file" 
+              ref={projectInputRef} 
+              className="hidden" 
+              accept=".bzrani,.svganim,.json" 
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const content = event.target?.result as string;
+                    processProjectFileContent(content);
+                  };
+                  reader.readAsText(file);
+                }
+                e.target.value = '';
+              }}
+            />
           </div>
         </div>
         <div className="flex items-center gap-2">
