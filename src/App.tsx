@@ -8,6 +8,7 @@ import {
   Upload, 
   Settings2, 
   Play, 
+  Pause,
   Square, 
   Circle, 
   Diamond,
@@ -534,6 +535,7 @@ export default function App({ user }: { user?: User }) {
   const [draggingGuide, setDraggingGuide] = useState<string | null>(null);
   
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [activePoint, setActivePoint] = useState<{ sIdx: number; pIdx: number; startPos?: { x: number, y: number }, isSmooth?: boolean } | null>(null);
   const [selectedAnchors, setSelectedAnchors] = useState<number[]>([]);
@@ -2295,6 +2297,9 @@ export default function App({ user }: { user?: User }) {
   const handleSvgMouseDown = (e: React.MouseEvent) => {
     // Stop propagation so it doesn't trigger parent clicks erroneously
     e.stopPropagation();
+    if (isPaused) {
+      resetPause();
+    }
     if (!svgRef.current || !contentRef.current) return;
     
     if (e.button === 1 || (tool === 'hand' && e.button === 0)) {
@@ -2347,26 +2352,49 @@ export default function App({ user }: { user?: User }) {
     backOut: (t) => { const c1 = 1.70158; const c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
   };
 
+  const animProgressRef = useRef(0);
+  useEffect(() => {
+    animProgressRef.current = animProgress;
+  }, [animProgress]);
+
+  const shouldResumeRef = useRef(false);
+
+  const resetPause = useCallback(() => {
+    setIsPaused(false);
+    setAnimProgress(1);
+  }, []);
+
+  useEffect(() => {
+    resetPause();
+  }, [activeKeyIdx, tool, resetPause]);
+
   useEffect(() => {
     let controls: any;
     if (isAnimating) {
-      controls = animate(0, 1, {
-        duration: animDuration,
+      const startProgress = shouldResumeRef.current ? animProgressRef.current : 0;
+      shouldResumeRef.current = false;
+      controls = animate(startProgress, 1, {
+        duration: animDuration * (1 - startProgress),
         ease: "linear", // Always animate linearly, we handle custom math locally 
         onUpdate: (latest) => setAnimProgress(latest),
-        onComplete: () => setIsAnimating(false)
+        onComplete: () => {
+          setIsAnimating(false);
+          setAnimProgress(1);
+        }
       });
     } else {
-      setAnimProgress(1); // Show current state when not animating
+      if (!isPaused) {
+        setAnimProgress(1); // Show current state when not animating
+      }
     }
     return () => controls?.stop();
-  }, [isAnimating, animDuration]);
+  }, [isAnimating, animDuration, isPaused]);
 
   // Interpolated segments for rendering
   const displayedSegments = React.useMemo(() => {
     // If we're not currently PLAYING the animation and not RECORDING, 
     // we should show the current active working state (segments).
-    if (!isAnimating && !isRecording) return segments;
+    if (!isAnimating && !isRecording && !isPaused) return segments;
     
     if (keyframes.length < 2) return segments;
     
@@ -2453,6 +2481,7 @@ export default function App({ user }: { user?: User }) {
   };
 
   const selectKeyframe = (idx: number) => {
+    resetPause();
     setActiveKeyIdx(idx);
     const cloned = JSON.parse(JSON.stringify(keyframes[idx]));
     setSegments(cloned);
@@ -3185,7 +3214,7 @@ export default function App({ user }: { user?: User }) {
 
                     handles.push(
                       <g key={`H-${sIdx}-${pIdx}`} className="group/handle">
-                        {!isAnimating && tool === 'select' && (
+                        {!isAnimating && !isPaused && tool === 'select' && (
                           <circle 
                             cx={x} cy={y} r={10} 
                             fill="transparent" 
@@ -3334,7 +3363,7 @@ export default function App({ user }: { user?: User }) {
 
                     anchors.push(
                       <g key={`A-${sIdx}-${pIdx}`} className="group/anchor">
-                        {!isAnimating && tool === 'select' && (
+                        {!isAnimating && !isPaused && tool === 'select' && (
                           <circle 
                             cx={x} cy={y} r={12} 
                             fill="transparent" 
@@ -3378,7 +3407,7 @@ export default function App({ user }: { user?: User }) {
 
                   // Draw corner widgets!
                   const cornerWidgets: React.ReactNode[] = [];
-                  if (!isAnimating && tool === 'select') {
+                  if (!isAnimating && !isPaused && tool === 'select') {
                     const corners = findCorners(displayedSegments);
                     corners.forEach((corner, idx) => {
                        // Only show corner widget if its corresponding anchor is selected, OR if we are currently dragging a corner 
@@ -3997,18 +4026,50 @@ export default function App({ user }: { user?: User }) {
             </button>
           </div>
           
-          <button 
-            onClick={() => setIsAnimating(!isAnimating)}
-            className={cn(
-              "px-5 py-2 rounded text-xs font-bold transition-all duration-300 flex items-center gap-2",
-              isAnimating 
-                ? "bg-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.3)]" 
-                : "bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => {
+                if (isAnimating) {
+                  setIsPaused(true);
+                  setIsAnimating(false);
+                } else {
+                  if (isPaused) {
+                    shouldResumeRef.current = true;
+                  } else {
+                    shouldResumeRef.current = false;
+                  }
+                  setIsPaused(false);
+                  setIsAnimating(true);
+                }
+              }}
+              className={cn(
+                "px-5 py-2 rounded text-xs font-bold transition-all duration-300 flex items-center gap-2",
+                isAnimating 
+                  ? "bg-amber-500 text-white shadow-[0_0_20px_rgba(245,158,11,0.3)]" 
+                  : isPaused
+                    ? "bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                    : "bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+              )}
+            >
+              {isAnimating ? <Pause className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+              {isAnimating ? "PAUSE" : isPaused ? "RESUME" : "PLAY TIMELINE"}
+            </button>
+
+            {(isAnimating || isPaused) && (
+              <button
+                onClick={() => {
+                  setIsAnimating(false);
+                  setIsPaused(false);
+                  shouldResumeRef.current = false;
+                  setAnimProgress(1);
+                }}
+                className="px-4 py-2 rounded text-xs font-bold bg-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.3)] hover:bg-rose-600 transition-all duration-300 flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200"
+              >
+                <Square className="w-3 h-3 fill-current" />
+                STOP
+              </button>
             )}
-          >
-            {isAnimating ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
-            {isAnimating ? "STOP" : "PLAY TIMELINE"}
-          </button>
+          </div>
         </div>
         
         <div className="flex-1 border border-border rounded-lg bg-bg relative flex items-center px-12 group/timeline overflow-hidden">
@@ -4078,7 +4139,7 @@ export default function App({ user }: { user?: User }) {
 
         <div className="flex justify-between text-[10px] text-text-dim px-2 tracking-tight">
           <div className="flex gap-4">
-            <span>{isAnimating ? `Animating ${keyframes.length} steps...` : `${keyframes.length} keyframes defined.`}</span>
+            <span>{isAnimating ? `Animating ${keyframes.length} steps...` : isPaused ? `Paused at ${(animProgress * 100).toFixed(0)}%` : `${keyframes.length} keyframes defined.`}</span>
           </div>
           <span className="font-mono uppercase">DURATION: {animDuration.toFixed(1)}s • EASE: {animEasing} • {keyframes.length - 1} TRANSITIONS</span>
         </div>
@@ -4089,7 +4150,7 @@ export default function App({ user }: { user?: User }) {
         <div className="flex items-center gap-4">
           <span>Selection: {segments.length > 0 ? `Path [${segments.length} segments]` : 'None'}</span>
           <div className="w-px h-3 bg-border" />
-          <span>Status: {isAnimating ? 'Animating...' : 'Editing'}</span>
+          <span>Status: {isAnimating ? 'Animating...' : isPaused ? 'Paused' : 'Editing'}</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="font-mono uppercase">Zoom: {Math.round(zoom * 100)}%</span>
