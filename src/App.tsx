@@ -551,6 +551,10 @@ export default function App({ user }: { user?: User }) {
   const [exportRatio, setExportRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [exportFraming, setExportFraming] = useState<'auto' | 'viewport'>('auto');
 
+  // Save Project state
+  const [showSaveProjectModal, setShowSaveProjectModal] = useState(false);
+  const [saveFileName, setSaveFileName] = useState('');
+
   // Presets state
   const [presets, setPresets] = useState<{id: string; name: string; settings: ConfigSettings; createdAt: number}[]>([]);
   const [isPresetsLoading, setIsPresetsLoading] = useState(false);
@@ -893,9 +897,9 @@ export default function App({ user }: { user?: User }) {
     if (cloned.settings) applySettings(cloned.settings);
   }, [history, historyPtr]);
 
-  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState, addKeyframe: null as null | (() => void) });
+  const bindRef = useRef({ activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState, addKeyframe: null as null | (() => void), handleExportProject: null as null | (() => void) });
   useEffect(() => {
-    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState, addKeyframe: null };
+    bindRef.current = { activeGuide, selectedAnchors, activeKeyIdx, tool, undo, redo, keyframeTimes, keyframes, segments, pushHistory, getCurrentSettings, lastPushedSettingsStr: lastPushedSettingsRef.current, historyPtr, revertToSavedState, addKeyframe: null, handleExportProject };
   });
 
   useEffect(() => {
@@ -955,6 +959,13 @@ export default function App({ user }: { user?: User }) {
       }
 
       // Undo/Redo shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+        e.preventDefault();
+        if (bindRef.current.handleExportProject) {
+          bindRef.current.handleExportProject();
+        }
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
         e.preventDefault();
         
@@ -2110,7 +2121,7 @@ export default function App({ user }: { user?: User }) {
       // @ts-ignore
       const buffer = muxer.target.buffer;
       
-      const isTauri = typeof window !== 'undefined' && window.__TAURI_IPC__ !== undefined;
+      const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_IPC__ !== undefined;
       const defaultFilename = `vector-animation-${Date.now()}-${exportRes}.mp4`;
       
       if (isTauri) {
@@ -2501,6 +2512,21 @@ export default function App({ user }: { user?: User }) {
   };
 
   const handleExportProject = () => {
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10);
+    setSaveFileName(`project-${dateStr}`);
+    setShowSaveProjectModal(true);
+  };
+
+  const confirmExportProject = (filenameToSave: string) => {
+    let finalFilename = filenameToSave.trim();
+    if (!finalFilename) {
+      finalFilename = `project-${Date.now()}`;
+    }
+    if (!finalFilename.endsWith('.bzrani')) {
+      finalFilename += '.bzrani';
+    }
+
     const projectData = {
       type: "bzrani-project",
       version: "1.0",
@@ -2552,11 +2578,12 @@ export default function App({ user }: { user?: User }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `project-${Date.now()}.bzrani`;
+    a.download = finalFilename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowSaveProjectModal(false);
   };
 
   const processProjectFileContent = (content: string) => {
@@ -4073,6 +4100,56 @@ export default function App({ user }: { user?: User }) {
 
       {showAdminPanel && (
         <AdminPanel onClose={() => setShowAdminPanel(false)} />
+      )}
+
+      {showSaveProjectModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-panel border border-border w-full max-w-md p-6 rounded-xl shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2 text-accent">
+              <Save className="w-5 h-5" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-text">Save Project</h3>
+            </div>
+            <p className="text-xs text-text-dim leading-relaxed">
+              프로젝트 파일(.bzrani)의 이름을 지정해 주세요. 저장된 파일은 언제든지 'Load Project' 버튼을 통해 불러올 수 있습니다.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider">File Name</label>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={saveFileName}
+                  onChange={(e) => setSaveFileName(e.target.value)}
+                  className="w-full text-xs bg-bg border border-border rounded px-3 py-2 pr-16 outline-none focus:border-accent text-text font-medium"
+                  placeholder="project-name"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      confirmExportProject(saveFileName);
+                    } else if (e.key === 'Escape') {
+                      setShowSaveProjectModal(false);
+                    }
+                  }}
+                />
+                <span className="absolute right-3 text-[10px] font-bold text-text-dim uppercase">.bzrani</span>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-2">
+              <button
+                onClick={() => setShowSaveProjectModal(false)}
+                className="px-3.5 py-1.5 rounded bg-bg hover:bg-border text-xs text-text font-medium border border-border transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => confirmExportProject(saveFileName)}
+                className="px-4 py-1.5 rounded bg-accent/20 hover:bg-accent/30 text-xs text-accent font-bold transition-all"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
